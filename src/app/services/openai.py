@@ -2,8 +2,9 @@
 OpenAI service module.
 """
 
+import asyncio
 from functools import lru_cache
-from typing import Any, Dict, List, Optional
+from typing import Any, AsyncGenerator, Dict, List, Optional, Union
 
 from fastapi import Depends
 from openai import AsyncOpenAI
@@ -13,6 +14,12 @@ from openai.types.beta.threads import ThreadMessage as Message
 
 from app.core.config import Settings, get_settings
 from app.core.logger import get_logger
+from app.models.response import (
+    NormalResponse,
+    ResponseChunk,
+    ResponseConfig,
+    ResponseMode,
+)
 
 logger = get_logger(__name__)
 
@@ -235,3 +242,113 @@ class OpenAIService:
         except Exception as e:
             logger.error("Failed to get OpenAI assistant", error=str(e))
             return None
+
+    async def process_response(
+        self,
+        thread_id: str,
+        run_id: str,
+        config: ResponseConfig,
+    ) -> Union[AsyncGenerator[ResponseChunk, None], NormalResponse]:
+        """
+        Process the response from OpenAI based on the configuration mode.
+
+        Args:
+            thread_id: Thread ID
+            run_id: Run ID
+            config: Response configuration
+
+        Returns:
+            Union[AsyncGenerator[ResponseChunk, None], NormalResponse]: Response based on mode
+        """
+        try:
+            # Wait for run to complete
+            run = await self._wait_for_run_completion(thread_id, run_id)
+
+            # Get messages after run completion
+            messages = await self.get_messages(thread_id, limit=1)
+            if not messages:
+                raise ValueError("No messages found after run completion")
+
+            message = messages[0]
+
+            if config.mode == ResponseMode.STREAMING:
+                return self._stream_response(message, config)
+            else:
+                return self._create_normal_response(message)
+
+        except Exception as e:
+            logger.error("Failed to process response", error=str(e))
+            raise
+
+    async def _wait_for_run_completion(self, thread_id: str, run_id: str) -> Run:
+        """
+        Wait for a run to complete.
+
+        Args:
+            thread_id: Thread ID
+            run_id: Run ID
+
+        Returns:
+            Run: Completed run
+        """
+        while True:
+            run = await self.get_run(thread_id, run_id)
+            if run.status in ["completed", "failed"]:
+                if run.status == "failed":
+                    raise ValueError(f"Run failed: {run.last_error}")
+                return run
+            await asyncio.sleep(0.5)  # Poll every 500ms
+
+    async def _stream_response(
+        self,
+        message: Message,
+        config: ResponseConfig,
+    ) -> AsyncGenerator[ResponseChunk, None]:
+        """
+        Stream a response in chunks.
+
+        Args:
+            message: OpenAI message
+            config: Response configuration
+
+        Yields:
+            ResponseChunk: Response chunks
+        """
+        content = message.content[0].text.value
+        chunk_size = config.chunk_size or 100
+        chunks = [
+            content[i : i + chunk_size] for i in range(0, len(content), chunk_size)
+        ]
+
+        for i, chunk in enumerate(chunks):
+            is_last = i == len(chunks) - 1
+            yield ResponseChunk(
+                thread_id=message.thread_id,
+                message_id=message.id,
+                content=chunk,
+                is_complete=is_last,
+                metadata={
+                    "chunk_index": i,
+                    "total_chunks": len(chunks),
+                },
+            )
+
+    def _create_normal_response(self, message: Message) -> NormalResponse:
+        """
+        Create a normal (non-streaming) response.
+
+        Args:
+            message: OpenAI message
+
+        Returns:
+            NormalResponse: Complete response
+        """
+        return NormalResponse(
+            thread_id=message.thread_id,
+            message_id=message.id,
+            content=message.content[0].text.value,
+            metadata={
+                "role": message.role,
+                "created_at": message.created_at,
+            },
+        )
