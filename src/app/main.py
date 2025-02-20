@@ -15,6 +15,7 @@ from app.api.assistant import router as assistant_router
 from app.api.auth import router as auth_router
 from app.api.files import router as files_router
 from app.api.messages import router as messages_router
+from app.api.preferences import router as preferences_router
 from app.core.config import get_settings
 from app.core.di import RequestScopeMiddleware
 from app.core.logging import configure_logging
@@ -53,6 +54,7 @@ def custom_openapi():
             {"name": "Messages", "description": "Message management endpoints"},
             {"name": "Files", "description": "File management endpoints"},
             {"name": "Assistant", "description": "Assistant configuration endpoints"},
+            {"name": "Preferences", "description": "User preferences endpoints"},
         ],
     )
 
@@ -118,6 +120,7 @@ def create_application() -> FastAPI:
     application.include_router(messages_router)
     application.include_router(files_router)
     application.include_router(assistant_router)
+    application.include_router(preferences_router)
 
     @application.get(
         "/health",

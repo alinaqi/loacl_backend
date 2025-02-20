@@ -10,6 +10,7 @@ DROP TABLE IF EXISTS lacl_files;
 DROP TABLE IF EXISTS lacl_messages;
 DROP TABLE IF EXISTS lacl_threads;
 DROP TABLE IF EXISTS lacl_sessions;
+DROP TABLE IF EXISTS lacl_user_preferences;
 DROP TABLE IF EXISTS lacl_assistants;
 
 -- Create assistants table
@@ -140,6 +141,21 @@ CREATE INDEX idx_lacl_usage_metrics_assistant_id ON lacl_usage_metrics(assistant
 CREATE INDEX idx_lacl_usage_metrics_recorded_at ON lacl_usage_metrics(recorded_at);
 CREATE INDEX idx_lacl_usage_metrics_type ON lacl_usage_metrics(metric_type);
 
+-- Create user_preferences table
+CREATE TABLE lacl_user_preferences (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL,
+    theme TEXT DEFAULT 'light',
+    language TEXT DEFAULT 'en',
+    timezone TEXT DEFAULT 'UTC',
+    notifications_enabled BOOLEAN DEFAULT true,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    preferences JSONB DEFAULT '{}'
+);
+
+CREATE INDEX idx_lacl_user_preferences_user_id ON lacl_user_preferences(user_id);
+
 -- Create helper functions
 CREATE OR REPLACE FUNCTION lacl_update_updated_at()
 RETURNS TRIGGER AS $$
@@ -231,7 +247,7 @@ CREATE POLICY "lacl_session_access_policy" ON lacl_sessions
 CREATE POLICY "lacl_thread_access_policy" ON lacl_threads
     FOR ALL USING (
         session_id IN (
-            SELECT id FROM lacl_sessions WHERE 
+            SELECT id FROM lacl_sessions WHERE
                 (session_type = 'authenticated' AND user_id = auth.uid()) OR
                 (session_type = 'guest' AND fingerprint = current_setting('request.headers')::json->>'fingerprint')
         )
@@ -241,7 +257,7 @@ CREATE POLICY "lacl_message_access_policy" ON lacl_messages
     FOR ALL USING (
         thread_id IN (
             SELECT id FROM lacl_threads WHERE session_id IN (
-                SELECT id FROM lacl_sessions WHERE 
+                SELECT id FROM lacl_sessions WHERE
                     (session_type = 'authenticated' AND user_id = auth.uid()) OR
                     (session_type = 'guest' AND fingerprint = current_setting('request.headers')::json->>'fingerprint')
             )
@@ -252,7 +268,7 @@ CREATE POLICY "lacl_file_access_policy" ON lacl_files
     FOR ALL USING (
         thread_id IN (
             SELECT id FROM lacl_threads WHERE session_id IN (
-                SELECT id FROM lacl_sessions WHERE 
+                SELECT id FROM lacl_sessions WHERE
                     (session_type = 'authenticated' AND user_id = auth.uid()) OR
                     (session_type = 'guest' AND fingerprint = current_setting('request.headers')::json->>'fingerprint')
             )
@@ -266,7 +282,7 @@ CREATE POLICY "lacl_follow_up_suggestions_access_policy" ON lacl_follow_up_sugge
     FOR ALL USING (
         thread_id IN (
             SELECT id FROM lacl_threads WHERE session_id IN (
-                SELECT id FROM lacl_sessions WHERE 
+                SELECT id FROM lacl_sessions WHERE
                     (session_type = 'authenticated' AND user_id = auth.uid()) OR
                     (session_type = 'guest' AND fingerprint = current_setting('request.headers')::json->>'fingerprint')
             )
@@ -291,4 +307,18 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- Schedule cleanup job (requires pg_cron extension)
--- SELECT cron.schedule('0 0 * * *', 'SELECT lacl_cleanup_expired_sessions();'); 
+-- SELECT cron.schedule('0 0 * * *', 'SELECT lacl_cleanup_expired_sessions();');
+
+-- Create trigger for updated_at
+CREATE TRIGGER lacl_update_user_preferences_updated_at
+    BEFORE UPDATE ON lacl_user_preferences
+    FOR EACH ROW
+    EXECUTE FUNCTION lacl_update_updated_at();
+
+-- Add RLS for user_preferences
+ALTER TABLE lacl_user_preferences ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "lacl_user_preferences_access_policy" ON lacl_user_preferences
+    FOR ALL USING (
+        user_id = auth.uid()
+    );
