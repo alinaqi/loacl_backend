@@ -189,3 +189,31 @@ class AuthService:
         except Exception as e:
             logger.error("Failed to convert guest session", error=str(e))
             raise
+
+    async def delete_guest_session(self, session_id: UUID) -> None:
+        """
+        Delete a guest session and all associated data.
+
+        Args:
+            session_id: The ID of the guest session to delete
+
+        Raises:
+            ValueError: If session not found or is not a guest session
+            Exception: If deletion fails
+        """
+        try:
+            # Get and validate guest session
+            session = await self.session_repo.get_by_id(session_id)
+            if not session:
+                raise ValueError("Session not found")
+            if session.session_type != "guest":
+                raise ValueError(
+                    "Only guest sessions can be deleted through this endpoint"
+                )
+
+            # Delete the session and all associated data
+            await self.session_repo.delete(session_id)
+
+        except Exception as e:
+            logger.error("Failed to delete guest session", error=str(e))
+            raise

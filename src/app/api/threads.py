@@ -2,12 +2,14 @@
 Thread endpoints module.
 """
 
-from typing import List
+from typing import List, Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
+from app.models.suggestions import SuggestionsResponse
 from app.models.thread import Thread, ThreadCreate
+from app.services.suggestions import SuggestionsService
 from app.services.thread import ThreadService
 
 router = APIRouter(prefix="/threads", tags=["threads"])
@@ -94,3 +96,31 @@ async def get_guest_threads(
         limit=limit,
         offset=offset,
     )
+
+
+@router.post("/{thread_id}/suggest", response_model=SuggestionsResponse)
+async def get_suggestions(
+    thread_id: UUID,
+    message_id: Optional[UUID] = None,
+    suggestions_service: SuggestionsService = Depends(),
+) -> SuggestionsResponse:
+    """
+    Get follow-up suggestions based on conversation.
+
+    Args:
+        thread_id: Thread ID
+        message_id: Optional message ID to generate suggestions for
+        suggestions_service: Injected suggestions service
+
+    Returns:
+        SuggestionsResponse: List of follow-up suggestions
+    """
+    try:
+        suggestions = await suggestions_service.generate_suggestions(
+            thread_id=thread_id,
+            message_id=message_id,
+        )
+        return SuggestionsResponse(suggestions=suggestions)
+    except Exception as e:
+        logger.error("Failed to get suggestions", error=str(e))
+        raise HTTPException(status_code=500, detail=str(e))

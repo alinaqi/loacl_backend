@@ -1,4 +1,5 @@
 from typing import Optional
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -128,3 +129,27 @@ async def convert_session(
     except Exception as e:
         logger.error("Failed to convert session", error=str(e))
         raise HTTPException(status_code=500, detail="Failed to convert session")
+
+
+@router.delete("/guest/sessions/{session_id}", status_code=204)
+async def delete_guest_session(
+    session_id: UUID,
+    auth_service: AuthService = Depends(),
+) -> None:
+    """
+    Delete a guest session and all associated data.
+
+    Args:
+        session_id: The ID of the guest session to delete
+        auth_service: Injected auth service
+
+    Raises:
+        HTTPException: If session deletion fails or session is not found
+    """
+    try:
+        await auth_service.delete_guest_session(session_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        logger.error("Failed to delete guest session", error=str(e))
+        raise HTTPException(status_code=500, detail="Failed to delete guest session")
