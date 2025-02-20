@@ -13,17 +13,20 @@ from fastapi import Depends, Request
 from openai import AsyncOpenAI
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.responses import Response
-from supabase import create_client
-from supabase.lib.client_options import ClientOptions as Client
+from supabase import Client
 
 from app.core.config import Settings, get_settings
+from app.core.logger import get_logger
+from app.core.supabase import get_supabase_client
 from app.repositories.assistant import AssistantRepository
+from app.repositories.base import BaseRepository
 from app.repositories.thread import MessageRepository, ThreadRepository
 from app.services.assistant import AssistantService
 from app.services.conversation import ConversationContextService
 from app.services.openai import OpenAIService
 
 T = TypeVar("T")
+logger = get_logger(__name__)
 
 
 class DependencyContainer:
@@ -273,22 +276,28 @@ class RequestScopeMiddleware(BaseHTTPMiddleware):
         Returns:
             Response: Response from next middleware/endpoint
         """
-        # Initialize services
-        settings = get_settings()
+        try:
+            # Initialize services
+            settings = get_settings()
+            supabase_client = get_supabase_client(settings)
+            openai_service = OpenAIService(settings.OPENAI_API_KEY)
 
-        # Initialize repositories
-        assistant_repo = AssistantRepository()
+            # Initialize services
+            assistant_service = AssistantService(
+                settings=settings,
+                client=supabase_client,
+                openai_service=openai_service,
+            )
 
-        # Initialize services
-        assistant_service = AssistantService(
-            settings=settings, assistant_repo=assistant_repo
-        )
+            # Add to request state
+            request.state.settings = settings
+            request.state.supabase_client = supabase_client
+            request.state.assistant_service = assistant_service
 
-        # Add to request state
-        request.state.settings = settings
-        request.state.assistant_service = assistant_service
-
-        return await call_next(request)
+            return await call_next(request)
+        except Exception as e:
+            logger.error("Error in request scope middleware", exc_info=str(e))
+            raise
 
 
 # Add FastAPI dependency for scoped service injection

@@ -1,6 +1,7 @@
 """
 Logging configuration module.
 """
+
 import logging
 import sys
 from typing import Any
@@ -14,7 +15,7 @@ settings = get_settings()
 
 def configure_logging() -> None:
     """Configure structured logging for the application."""
-    
+
     # Set logging level based on environment
     logging.basicConfig(
         format="%(message)s",
@@ -30,7 +31,11 @@ def configure_logging() -> None:
             structlog.processors.StackInfoRenderer(),
             structlog.dev.set_exc_info,
             structlog.processors.TimeStamper(fmt="%Y-%m-%d %H:%M:%S"),
-            structlog.dev.ConsoleRenderer() if settings.DEBUG else structlog.processors.JSONRenderer(),
+            (
+                structlog.dev.ConsoleRenderer()
+                if settings.DEBUG
+                else structlog.processors.JSONRenderer()
+            ),
         ],
         wrapper_class=structlog.make_filtering_bound_logger(
             logging.DEBUG if settings.DEBUG else logging.INFO
@@ -44,8 +49,8 @@ def configure_logging() -> None:
 def get_logger(*args: Any, **kwargs: Any) -> structlog.BoundLogger:
     """
     Get a configured logger instance.
-    
+
     Returns:
         structlog.BoundLogger: Configured logger instance
     """
-    return structlog.get_logger(*args, **kwargs) 
+    return structlog.get_logger(*args, **kwargs)

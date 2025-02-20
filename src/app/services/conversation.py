@@ -6,9 +6,16 @@ from datetime import datetime
 from typing import Dict, List, Optional
 from uuid import UUID
 
+from fastapi import Depends
+
 from app.core.logger import get_logger
 from app.models.thread import Message, Thread
-from app.repositories.thread import MessageRepository, ThreadRepository
+from app.repositories.thread import (
+    MessageRepository,
+    ThreadRepository,
+    get_message_repository,
+    get_thread_repository,
+)
 from app.services.base import BaseService
 
 logger = get_logger(__name__)
@@ -19,8 +26,8 @@ class ConversationContextService(BaseService):
 
     def __init__(
         self,
-        thread_repository: ThreadRepository,
-        message_repository: MessageRepository,
+        thread_repository: ThreadRepository = Depends(get_thread_repository),
+        message_repository: MessageRepository = Depends(get_message_repository),
     ) -> None:
         """
         Initialize the service.

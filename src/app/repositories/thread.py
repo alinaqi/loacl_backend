@@ -26,3 +26,13 @@ class MessageRepository(BaseRepository[Message, MessageCreate, Message]):
     def __init__(self):
         """Initialize repository."""
         super().__init__("lacl_messages")
+
+
+def get_thread_repository() -> ThreadRepository:
+    """Get thread repository instance."""
+    return ThreadRepository()
+
+
+def get_message_repository() -> MessageRepository:
+    """Get message repository instance."""
+    return MessageRepository()

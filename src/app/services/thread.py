@@ -9,7 +9,7 @@ from fastapi import Depends, HTTPException
 
 from app.core.logger import get_logger
 from app.models.thread import Thread, ThreadCreate, ThreadUpdate
-from app.repositories.thread import ThreadRepository
+from app.repositories.thread import ThreadRepository, get_thread_repository
 from app.services.base import BaseService
 from app.services.openai import OpenAIService
 
@@ -21,7 +21,7 @@ class ThreadService(BaseService):
 
     def __init__(
         self,
-        thread_repository: ThreadRepository = Depends(),
+        thread_repository: ThreadRepository = Depends(get_thread_repository),
         openai_service: OpenAIService = Depends(),
     ) -> None:
         """

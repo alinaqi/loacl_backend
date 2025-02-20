@@ -16,6 +16,7 @@ from app.api.auth import router as auth_router
 from app.api.files import router as files_router
 from app.api.messages import router as messages_router
 from app.api.preferences import router as preferences_router
+from app.api.threads import router as threads_router
 from app.core.config import get_settings
 from app.core.di import RequestScopeMiddleware
 from app.core.logging import configure_logging
@@ -117,6 +118,7 @@ def create_application() -> FastAPI:
 
     # Include routers
     application.include_router(auth_router)
+    application.include_router(threads_router)
     application.include_router(messages_router)
     application.include_router(files_router)
     application.include_router(assistant_router)

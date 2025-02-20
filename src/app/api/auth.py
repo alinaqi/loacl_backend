@@ -98,6 +98,7 @@ async def create_guest_session(
     try:
         return await auth_service.create_guest_session(request)
     except Exception as e:
+        logger.error("Failed to create guest session", exc_info=str(e))
         raise HTTPException(
             status_code=400, detail=f"Failed to create guest session: {str(e)}"
         )

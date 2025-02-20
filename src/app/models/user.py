@@ -15,37 +15,42 @@ class UserBase(BaseModel):
     """Base user model."""
 
     email: EmailStr = Field(..., description="User's email address")
-    full_name: str = Field(..., description="User's full name")
     is_active: bool = Field(default=True, description="Whether the user is active")
-    metadata: Dict = Field(default_factory=dict, description="Additional user metadata")
+    is_superuser: bool = Field(
+        default=False, description="Whether the user is a superuser"
+    )
+    metadata: Dict = Field(default_factory=dict, description="Additional metadata")
 
 
 class UserCreate(UserBase):
     """User creation model."""
 
-    password: str = Field(..., min_length=8, description="User's password")
+    password: str = Field(..., description="User's password")
 
 
-class UserUpdate(BaseModel):
+class UserUpdate(UserBase):
     """User update model."""
 
     email: Optional[EmailStr] = None
-    full_name: Optional[str] = None
     password: Optional[str] = None
     is_active: Optional[bool] = None
+    is_superuser: Optional[bool] = None
     metadata: Optional[Dict] = None
 
 
-class User(BaseModelTimestamps):
-    """User model."""
+class User(UserBase, BaseModelTimestamps):
+    """User model with ID and timestamps."""
 
     id: UUID = Field(..., description="Unique identifier")
-    email: str = Field(..., description="User's email address")
-    full_name: str = Field(..., description="User's full name")
-    client_id: str = Field(..., description="Client ID for authentication")
-    client_secret: str = Field(..., description="Client secret for authentication")
-    is_active: bool = Field(default=True, description="Whether the user is active")
-    metadata: dict = Field(default_factory=dict, description="Additional metadata")
+
+
+class UserResponse(BaseModel):
+    """User response model."""
+
+    id: UUID = Field(..., description="User ID")
+    email: EmailStr = Field(..., description="User's email address")
+    is_active: bool = Field(..., description="Whether the user is active")
+    is_superuser: bool = Field(..., description="Whether the user is a superuser")
 
 
 class UserInDB(User):

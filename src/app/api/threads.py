@@ -13,7 +13,7 @@ from app.models.thread import Thread, ThreadCreate
 from app.services.suggestions import SuggestionsService
 from app.services.thread import ThreadService
 
-router = APIRouter(prefix="/threads", tags=["threads"])
+router = APIRouter(prefix="/threads", tags=["Threads"])
 logger = get_logger(__name__)
 
 

@@ -2,18 +2,16 @@
 File service module.
 """
 
-import os
-from datetime import datetime
-from typing import BinaryIO, Dict, List, Optional
-from uuid import UUID, uuid4
+from typing import List, Optional
+from uuid import UUID
 
-from fastapi import UploadFile
-from supabase.client import Client
+from fastapi import Depends, HTTPException, UploadFile
 
 from app.core.logger import get_logger
-from app.models.file import File, FileCreate, FileStatus
-from app.repositories.file import FileRepository
+from app.models.file import File, FileCreate
+from app.repositories.file import FileRepository, get_file_repository
 from app.services.base import BaseService
+from app.services.openai import OpenAIService
 
 logger = get_logger(__name__)
 
@@ -21,133 +19,94 @@ logger = get_logger(__name__)
 class FileService(BaseService):
     """Service for handling file storage operations."""
 
-    def __init__(self, file_repository: FileRepository, supabase_client: Client):
+    def __init__(
+        self,
+        file_repository: FileRepository = Depends(get_file_repository),
+        openai_service: OpenAIService = Depends(),
+    ) -> None:
         """
         Initialize the service.
 
         Args:
             file_repository: Repository for file operations
-            supabase_client: Supabase client for storage operations
+            openai_service: OpenAI service for API operations
         """
         super().__init__()
         self.file_repository = file_repository
-        self.storage_client = supabase_client.storage
-        self.bucket_name = "files"  # Default bucket for file storage
+        self.openai_service = openai_service
 
-    async def upload_file(
-        self,
-        file: UploadFile,
-        thread_id: Optional[UUID] = None,
-        message_id: Optional[UUID] = None,
-        metadata: Optional[Dict] = None,
-    ) -> File:
+    async def upload_file(self, file: UploadFile) -> File:
         """
-        Upload a file to storage.
+        Upload a file.
 
         Args:
             file: File to upload
-            thread_id: Optional thread ID to associate with
-            message_id: Optional message ID to associate with
-            metadata: Optional metadata
 
         Returns:
-            File: Created file record
+            File: Uploaded file
         """
         try:
-            # Generate a unique storage path
-            file_id = uuid4()
-            extension = os.path.splitext(file.filename)[1]
-            storage_path = f"{file_id}{extension}"
+            # Upload to OpenAI
+            openai_file = await self.openai_service.upload_file(file)
 
-            # Create file record
+            # Create local file record
             file_data = FileCreate(
-                filename=file.filename,
+                name=file.filename,
+                openai_file_id=openai_file.id,
                 content_type=file.content_type,
-                size=0,  # Will be updated after upload
-                metadata=metadata or {},
+                size=file.size,
             )
-            file_record = File(
-                id=file_id, storage_path=storage_path, **file_data.model_dump()
-            )
-
-            # Upload to Supabase storage
-            file_content = await file.read()
-            await self.storage_client.from_(self.bucket_name).upload(
-                path=storage_path,
-                file=file_content,
-                file_options={"content-type": file.content_type},
-            )
-
-            # Update file size
-            file_record.size = len(file_content)
-            file_record.status = FileStatus.READY
-
-            # Create database record
-            response = await self.file_repository.create(file_record)
+            response = await self.file_repository.create(file_data)
             return File(**response.data[0])
 
         except Exception as e:
             logger.error("Failed to upload file", error=str(e))
-            raise
+            raise HTTPException(status_code=500, detail=str(e))
 
-    async def download_file(self, file_id: UUID) -> Optional[BinaryIO]:
+    async def get_file(self, file_id: UUID) -> Optional[File]:
         """
-        Download a file from storage.
+        Get a file by ID.
 
         Args:
             file_id: File ID
 
         Returns:
-            Optional[BinaryIO]: File content if found
+            Optional[File]: Found file or None
         """
         try:
-            # Get file record
-            file_data = await self.file_repository.get(file_id)
-            if not file_data:
-                return None
-
-            file = File(**file_data)
-
-            # Download from Supabase storage
-            response = await self.storage_client.from_(self.bucket_name).download(
-                file.storage_path
-            )
-            return response
-
+            response = await self.file_repository.get(file_id)
+            return File(**response) if response else None
         except Exception as e:
-            logger.error("Failed to download file", error=str(e))
-            raise
+            logger.error("Failed to get file", error=str(e))
+            raise HTTPException(status_code=500, detail=str(e))
 
-    async def delete_file(self, file_id: UUID) -> bool:
+    async def delete_file(self, file_id: UUID) -> None:
         """
-        Delete a file from storage and database.
+        Delete a file.
 
         Args:
             file_id: File ID
-
-        Returns:
-            bool: True if deleted successfully
         """
         try:
-            # Get file record
-            file_data = await self.file_repository.get(file_id)
-            if not file_data:
-                return False
+            # Get file first to check if it exists
+            file = await self.get_file(file_id)
+            if not file:
+                raise HTTPException(status_code=404, detail="File not found")
 
-            file = File(**file_data)
+            # Delete from OpenAI
+            try:
+                await self.openai_service.client.files.delete(file.openai_file_id)
+            except Exception as e:
+                logger.warning(f"Failed to delete OpenAI file: {str(e)}")
 
-            # Delete from Supabase storage
-            await self.storage_client.from_(self.bucket_name).remove(
-                [file.storage_path]
-            )
-
-            # Delete database record
+            # Delete local record
             await self.file_repository.delete(file_id)
-            return True
 
+        except HTTPException:
+            raise
         except Exception as e:
             logger.error("Failed to delete file", error=str(e))
-            raise
+            raise HTTPException(status_code=500, detail=str(e))
 
     async def get_thread_files(
         self,
@@ -176,7 +135,7 @@ class FileService(BaseService):
 
         except Exception as e:
             logger.error("Failed to get thread files", error=str(e))
-            raise
+            raise HTTPException(status_code=500, detail=str(e))
 
     async def attach_to_thread(self, file_id: UUID, thread_id: UUID) -> None:
         """
@@ -190,7 +149,7 @@ class FileService(BaseService):
             await self.file_repository.attach_to_thread(file_id, thread_id)
         except Exception as e:
             logger.error("Failed to attach file to thread", error=str(e))
-            raise
+            raise HTTPException(status_code=500, detail=str(e))
 
     async def detach_from_thread(self, file_id: UUID, thread_id: UUID) -> None:
         """
@@ -204,4 +163,4 @@ class FileService(BaseService):
             await self.file_repository.detach_from_thread(file_id, thread_id)
         except Exception as e:
             logger.error("Failed to detach file from thread", error=str(e))
-            raise
+            raise HTTPException(status_code=500, detail=str(e))

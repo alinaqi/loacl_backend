@@ -8,9 +8,11 @@ from uuid import UUID
 
 from fastapi import Depends
 from openai.types.beta import Assistant as OpenAIAssistant
+from supabase import Client
 
 from app.core.config import Settings, get_settings
 from app.core.logger import get_logger
+from app.core.supabase import get_supabase_client
 from app.models.assistant import (
     Assistant,
     AssistantCreate,
@@ -30,7 +32,7 @@ class AssistantService(BaseService):
     def __init__(
         self,
         settings: Settings = Depends(get_settings),
-        assistant_repo: AssistantRepository = Depends(),
+        client: Client = Depends(get_supabase_client),
         openai_service: OpenAIService = Depends(),
     ):
         """
@@ -38,12 +40,12 @@ class AssistantService(BaseService):
 
         Args:
             settings: Application settings
-            assistant_repo: Repository for assistant operations
+            client: Supabase client
             openai_service: OpenAI service for API operations
         """
         super().__init__()
         self.settings = settings
-        self.assistant_repo = assistant_repo
+        self.assistant_repo = AssistantRepository(client)
         self.openai_service = openai_service
 
     async def create_assistant(

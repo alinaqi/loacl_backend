@@ -8,9 +8,11 @@ from uuid import UUID
 
 from fastapi import Depends
 from jose import jwt
+from supabase import Client
 
 from app.core.config import Settings, get_settings
 from app.core.logger import get_logger
+from app.core.supabase import get_supabase_client
 from app.models.auth import (
     GuestSessionRequest,
     GuestSessionResponse,
@@ -29,20 +31,18 @@ class AuthService:
     def __init__(
         self,
         settings: Settings = Depends(get_settings),
-        user_repo: UserRepository = Depends(),
-        session_repo: SessionRepository = Depends(),
+        client: Client = Depends(get_supabase_client),
     ):
         """
         Initialize service.
 
         Args:
             settings: Application settings
-            user_repo: User repository
-            session_repo: Session repository
+            client: Supabase client
         """
         self.settings = settings
-        self.user_repo = user_repo
-        self.session_repo = session_repo
+        self.user_repo = UserRepository(client)
+        self.session_repo = SessionRepository(client)
 
     async def authenticate(self, client_id: str, client_secret: str) -> TokenResponse:
         """

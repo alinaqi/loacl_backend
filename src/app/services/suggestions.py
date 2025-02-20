@@ -17,12 +17,19 @@ from app.services.openai import OpenAIService
 logger = get_logger(__name__)
 
 
+def get_suggestions_repository() -> SuggestionsRepository:
+    """Get suggestions repository instance."""
+    return SuggestionsRepository()
+
+
 class SuggestionsService(BaseService):
     """Service for managing follow-up suggestions."""
 
     def __init__(
         self,
-        suggestions_repository: SuggestionsRepository = Depends(),
+        suggestions_repository: SuggestionsRepository = Depends(
+            get_suggestions_repository
+        ),
         conversation_service: ConversationContextService = Depends(),
         openai_service: OpenAIService = Depends(),
     ) -> None:
@@ -50,7 +57,7 @@ class SuggestionsService(BaseService):
             message_id: Optional message ID to generate suggestions for
 
         Returns:
-            List[str]: List of follow-up suggestions
+            List[str]: List of generated suggestions
         """
         try:
             # Get conversation context
@@ -80,9 +87,7 @@ class SuggestionsService(BaseService):
             )
 
             # Parse suggestions from response
-            suggestions = [s.strip() for s in response.split("\n") if s.strip()][
-                :3
-            ]  # Take top 3 suggestions
+            suggestions = [s.strip() for s in response.split("\n") if s.strip()][:3]
 
             # Store suggestions in database
             for suggestion in suggestions:

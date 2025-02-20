@@ -5,12 +5,10 @@ Base repository module for database operations.
 from typing import Any, Dict, Generic, List, Optional, TypeVar
 from uuid import UUID
 
-from fastapi import Depends
 from postgrest import APIResponse
 from supabase import Client
 
 from app.core.logger import get_logger
-from app.core.supabase import get_supabase_client
 
 ModelType = TypeVar("ModelType")
 CreateSchemaType = TypeVar("CreateSchemaType")
@@ -22,7 +20,7 @@ logger = get_logger(__name__)
 class BaseRepository(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
     """Base repository for database operations."""
 
-    def __init__(self, client: Client = Depends(get_supabase_client)):
+    def __init__(self, client: Client):
         """
         Initialize the repository.
 
@@ -49,7 +47,9 @@ class BaseRepository(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
                 .execute()
             )
         except Exception as e:
-            logger.error(f"Failed to create {self.table_name}", error=str(e))
+            logger.error(
+                f"Failed to create record in {self.table_name}", exc_info=str(e)
+            )
             raise
 
     async def get(self, id: UUID) -> Optional[Dict]:

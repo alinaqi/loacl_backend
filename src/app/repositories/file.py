@@ -5,20 +5,21 @@ File repository module.
 from typing import Optional
 from uuid import UUID
 
-from postgrest import APIResponse
-
+from app.core.logger import get_logger
 from app.db.repositories.base import BaseRepository
 from app.models.file import File, FileCreate, FileUpdate
+
+logger = get_logger(__name__)
 
 
 class FileRepository(BaseRepository[File, FileCreate, FileUpdate]):
     """Repository for file operations."""
 
-    def __init__(self) -> None:
-        """Initialize the repository."""
-        super().__init__("files")
+    def __init__(self):
+        """Initialize repository."""
+        super().__init__("lacl_files")
 
-    async def get_by_openai_id(self, openai_file_id: str) -> Optional[APIResponse]:
+    async def get_by_openai_id(self, openai_file_id: str) -> Optional[dict]:
         """
         Get a file by its OpenAI file ID.
 
@@ -26,7 +27,7 @@ class FileRepository(BaseRepository[File, FileCreate, FileUpdate]):
             openai_file_id: OpenAI file ID
 
         Returns:
-            Optional[APIResponse]: Found file or None
+            Optional[dict]: Found file or None
         """
         try:
             response = (
@@ -37,7 +38,7 @@ class FileRepository(BaseRepository[File, FileCreate, FileUpdate]):
             )
             return response.data[0] if response.data else None
         except Exception as e:
-            self.logger.error("Failed to get file by OpenAI ID", error=str(e))
+            logger.error("Failed to get file by OpenAI ID", error=str(e))
             raise
 
     async def get_thread_files(
@@ -45,7 +46,7 @@ class FileRepository(BaseRepository[File, FileCreate, FileUpdate]):
         thread_id: UUID,
         limit: int = 100,
         offset: int = 0,
-    ) -> APIResponse:
+    ) -> dict:
         """
         Get files attached to a thread.
 
@@ -55,7 +56,7 @@ class FileRepository(BaseRepository[File, FileCreate, FileUpdate]):
             offset: Number of files to skip
 
         Returns:
-            APIResponse: List of files
+            dict: List of files
         """
         try:
             query = (
@@ -66,10 +67,10 @@ class FileRepository(BaseRepository[File, FileCreate, FileUpdate]):
             query = query.range(offset, offset + limit - 1)
             return await query.execute()
         except Exception as e:
-            self.logger.error("Failed to get thread files", error=str(e))
+            logger.error("Failed to get thread files", error=str(e))
             raise
 
-    async def attach_to_thread(self, file_id: UUID, thread_id: UUID) -> APIResponse:
+    async def attach_to_thread(self, file_id: UUID, thread_id: UUID) -> dict:
         """
         Attach a file to a thread.
 
@@ -78,7 +79,7 @@ class FileRepository(BaseRepository[File, FileCreate, FileUpdate]):
             thread_id: Thread ID
 
         Returns:
-            APIResponse: Created attachment record
+            dict: Created attachment record
         """
         try:
             return (
@@ -92,10 +93,10 @@ class FileRepository(BaseRepository[File, FileCreate, FileUpdate]):
                 .execute()
             )
         except Exception as e:
-            self.logger.error("Failed to attach file to thread", error=str(e))
+            logger.error("Failed to attach file to thread", error=str(e))
             raise
 
-    async def detach_from_thread(self, file_id: UUID, thread_id: UUID) -> APIResponse:
+    async def detach_from_thread(self, file_id: UUID, thread_id: UUID) -> dict:
         """
         Detach a file from a thread.
 
@@ -104,7 +105,7 @@ class FileRepository(BaseRepository[File, FileCreate, FileUpdate]):
             thread_id: Thread ID
 
         Returns:
-            APIResponse: Deleted attachment record
+            dict: Deleted attachment record
         """
         try:
             return (
@@ -119,5 +120,10 @@ class FileRepository(BaseRepository[File, FileCreate, FileUpdate]):
                 .execute()
             )
         except Exception as e:
-            self.logger.error("Failed to detach file from thread", error=str(e))
+            logger.error("Failed to detach file from thread", error=str(e))
             raise
+
+
+def get_file_repository() -> FileRepository:
+    """Get file repository instance."""
+    return FileRepository()

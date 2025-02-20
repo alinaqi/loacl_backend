@@ -1,6 +1,7 @@
 """
 File models module.
 """
+
 from datetime import datetime
 from enum import Enum
 from typing import Dict, Optional
@@ -13,7 +14,7 @@ from app.models.base import BaseModelTimestamps
 
 class FileStatus(str, Enum):
     """File status enumeration."""
-    
+
     PENDING = "pending"
     PROCESSING = "processing"
     READY = "ready"
@@ -22,8 +23,8 @@ class FileStatus(str, Enum):
 
 class FileBase(BaseModel):
     """Base file model."""
-    
-    filename: str = Field(..., description="Original filename")
+
+    name: str = Field(..., description="Original filename")
     content_type: str = Field(..., description="File MIME type")
     size: int = Field(..., description="File size in bytes")
     metadata: Dict = Field(default_factory=dict, description="Additional metadata")
@@ -31,13 +32,14 @@ class FileBase(BaseModel):
 
 class FileCreate(FileBase):
     """File creation model."""
-    pass
+
+    openai_file_id: str = Field(..., description="OpenAI file ID")
 
 
 class FileUpdate(FileBase):
     """File update model."""
-    
-    filename: Optional[str] = None
+
+    name: Optional[str] = None
     content_type: Optional[str] = None
     size: Optional[int] = None
     metadata: Optional[Dict] = None
@@ -45,20 +47,22 @@ class FileUpdate(FileBase):
 
 class File(FileBase, BaseModelTimestamps):
     """File model with ID and timestamps."""
-    
+
     id: UUID = Field(..., description="Unique identifier")
-    openai_file_id: Optional[str] = Field(None, description="OpenAI file ID")
+    openai_file_id: str = Field(..., description="OpenAI file ID")
     storage_path: str = Field(..., description="Path in storage")
-    status: FileStatus = Field(default=FileStatus.PENDING, description="Status of the file")
+    status: FileStatus = Field(
+        default=FileStatus.PENDING, description="Status of the file"
+    )
     error: Optional[str] = Field(None, description="Error message if failed")
 
 
 class FileResponse(BaseModel):
     """File response model."""
-    
+
     id: UUID = Field(..., description="File ID")
-    filename: str = Field(..., description="Original filename")
+    name: str = Field(..., description="Original filename")
     content_type: str = Field(..., description="File MIME type")
     size: int = Field(..., description="File size in bytes")
-    status: FileStatus = Field(..., description="Status of the file")
-    created_at: datetime = Field(..., description="Creation timestamp") 
+    openai_file_id: str = Field(..., description="OpenAI file ID")
+    created_at: datetime = Field(..., description="Creation timestamp")
