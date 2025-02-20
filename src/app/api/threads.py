@@ -7,12 +7,14 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
+from app.core.logger import get_logger
 from app.models.suggestions import SuggestionsResponse
 from app.models.thread import Thread, ThreadCreate
 from app.services.suggestions import SuggestionsService
 from app.services.thread import ThreadService
 
 router = APIRouter(prefix="/threads", tags=["threads"])
+logger = get_logger(__name__)
 
 
 @router.post("", response_model=Thread)

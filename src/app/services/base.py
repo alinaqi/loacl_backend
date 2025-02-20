@@ -4,6 +4,7 @@ from pydantic import BaseModel
 from supabase import Client
 
 from app.core.logger import get_logger
+from app.core.supabase import get_supabase_client
 
 # Type variable for the model
 T = TypeVar("T", bound=BaseModel)
@@ -16,13 +17,12 @@ class BaseService(Generic[T]):
     Attributes:
         model_class (Type[T]): The Pydantic model class associated with this service
         logger: Logger instance for this service
-        supabase_client (Optional[Client]): Supabase client if needed
+        _db (Optional[Client]): Supabase client instance
     """
 
     def __init__(
         self,
-        model_class: Type[T],
-        supabase_client: Optional[Client] = None,
+        model_class: Optional[Type[T]] = None,
         *args: Any,
         **kwargs: Any,
     ) -> None:
@@ -31,17 +31,23 @@ class BaseService(Generic[T]):
 
         Args:
             model_class: The Pydantic model class for this service
-            supabase_client: Optional Supabase client
             *args: Additional positional arguments
             **kwargs: Additional keyword arguments
         """
         self.model_class = model_class
-        self.supabase_client = supabase_client
+        self._db: Optional[Client] = None
         self.logger = get_logger(self.__class__.__name__)
 
         # Initialize any additional attributes
         for key, value in kwargs.items():
             setattr(self, key, value)
+
+    @property
+    def db(self) -> Client:
+        """Get the Supabase client instance."""
+        if self._db is None:
+            self._db = get_supabase_client()
+        return self._db
 
     async def validate_model(self, data: dict) -> T:
         """
@@ -56,6 +62,8 @@ class BaseService(Generic[T]):
         Raises:
             ValidationError: If validation fails
         """
+        if not self.model_class:
+            raise ValueError("No model class defined for this service")
         return self.model_class(**data)
 
     async def log_operation(self, operation: str, details: Any = None) -> None:

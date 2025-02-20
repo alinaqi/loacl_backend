@@ -82,3 +82,20 @@ class TokenResponse(BaseModel):
                 "expires_at": "2024-02-20T12:00:00Z",
             }
         }
+
+
+class TokenData(BaseModel):
+    """Token data model for JWT claims."""
+
+    user_id: UUID = Field(..., description="User ID from the token")
+    exp: Optional[datetime] = Field(None, description="Token expiration timestamp")
+    scope: Optional[str] = Field(None, description="Token scope")
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "user_id": "123e4567-e89b-12d3-a456-426614174000",
+                "exp": "2024-02-20T12:00:00Z",
+                "scope": "user",
+            }
+        }

@@ -15,6 +15,10 @@ logger = get_logger(__name__)
 class AnalyticsService(BaseService):
     """Service for analytics operations."""
 
+    def __init__(self) -> None:
+        """Initialize the analytics service."""
+        super().__init__()
+
     async def get_usage_statistics(
         self, start_date: datetime, end_date: datetime
     ) -> UsageStatistics:
