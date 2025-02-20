@@ -41,6 +41,11 @@ class Settings(BaseSettings):
     LOG_ROTATION_SIZE: int = 10 * 1024 * 1024  # 10MB
     LOG_ROTATION_COUNT: int = 5
 
+    # JWT Configuration
+    JWT_SECRET_KEY: str
+    JWT_ALGORITHM: str = "HS256"
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24  # 24 hours
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

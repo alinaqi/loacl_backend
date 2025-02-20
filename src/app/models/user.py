@@ -36,16 +36,16 @@ class UserUpdate(BaseModel):
     metadata: Optional[Dict] = None
 
 
-class User(UserBase, BaseModelTimestamps):
-    """Complete user model with ID and timestamps."""
+class User(BaseModelTimestamps):
+    """User model."""
 
     id: UUID = Field(..., description="Unique identifier")
-    last_login: Optional[datetime] = Field(None, description="Last login timestamp")
-
-    class Config:
-        """Pydantic model configuration."""
-
-        from_attributes = True
+    email: str = Field(..., description="User's email address")
+    full_name: str = Field(..., description="User's full name")
+    client_id: str = Field(..., description="Client ID for authentication")
+    client_secret: str = Field(..., description="Client secret for authentication")
+    is_active: bool = Field(default=True, description="Whether the user is active")
+    metadata: dict = Field(default_factory=dict, description="Additional metadata")
 
 
 class UserInDB(User):

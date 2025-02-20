@@ -5,7 +5,9 @@ from pydantic import BaseModel
 
 from app.core.config import get_settings
 from app.models.assistant import AssistantInitResponse
+from app.models.auth import TokenRequest, TokenResponse
 from app.services.assistant import AssistantService
+from app.services.auth import AuthService
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
@@ -42,3 +44,28 @@ async def initialize_assistant(
         raise HTTPException(
             status_code=400, detail=f"Failed to initialize assistant: {str(e)}"
         )
+
+
+@router.post("/token", response_model=TokenResponse)
+async def get_auth_token(
+    request: TokenRequest, auth_service: AuthService = Depends()
+) -> TokenResponse:
+    """
+    Get authentication token for persistent user sessions.
+
+    Args:
+        request: Token request with client credentials
+        auth_service: Injected auth service
+
+    Returns:
+        TokenResponse: Authentication token response
+
+    Raises:
+        HTTPException: If authentication fails
+    """
+    try:
+        return await auth_service.authenticate(
+            client_id=request.client_id, client_secret=request.client_secret
+        )
+    except Exception as e:
+        raise HTTPException(status_code=401, detail=f"Authentication failed: {str(e)}")

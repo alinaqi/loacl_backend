@@ -5,13 +5,12 @@ Base repository module for database operations.
 from typing import Any, Dict, Generic, List, Optional, TypeVar
 from uuid import UUID
 
-from databases import Database
 from fastapi import Depends
 from postgrest import APIResponse
 from supabase import Client
 
-from app.core.db import get_database
-from app.core.logging import get_logger
+from app.core.logger import get_logger
+from app.core.supabase import get_supabase_client
 
 ModelType = TypeVar("ModelType")
 CreateSchemaType = TypeVar("CreateSchemaType")
@@ -23,14 +22,14 @@ logger = get_logger(__name__)
 class BaseRepository(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
     """Base repository for database operations."""
 
-    def __init__(self, db: Database = Depends(get_database)):
+    def __init__(self, client: Client = Depends(get_supabase_client)):
         """
         Initialize the repository.
 
         Args:
-            db: Database connection
+            client: Supabase client
         """
-        self.db = db
+        self.client = client
         self.table_name = ""  # Override in child classes
 
     async def create(self, data: CreateSchemaType) -> APIResponse:
@@ -53,7 +52,7 @@ class BaseRepository(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
             logger.error(f"Failed to create {self.table_name}", error=str(e))
             raise
 
-    async def get(self, id: Any) -> Optional[Dict]:
+    async def get(self, id: UUID) -> Optional[Dict]:
         """
         Get record by ID.
 
@@ -63,8 +62,17 @@ class BaseRepository(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
         Returns:
             Optional[Dict]: Record if found
         """
-        query = f"SELECT * FROM {self.table_name} WHERE id = :id"
-        return await self.db.fetch_one(query=query, values={"id": id})
+        try:
+            response = (
+                await self.client.table(self.table_name)
+                .select("*")
+                .eq("id", str(id))
+                .execute()
+            )
+            return response.data[0] if response.data else None
+        except Exception as e:
+            logger.error(f"Failed to get {self.table_name}", error=str(e))
+            raise
 
     async def list(
         self, limit: int = 100, offset: int = 0, filters: Optional[Dict] = None
@@ -80,15 +88,18 @@ class BaseRepository(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
         Returns:
             List[Dict]: List of records
         """
-        query = f"SELECT * FROM {self.table_name}"
-        if filters:
-            conditions = " AND ".join(f"{k} = :{k}" for k in filters.keys())
-            query += f" WHERE {conditions}"
-        query += " LIMIT :limit OFFSET :offset"
+        try:
+            query = self.client.table(self.table_name).select("*")
 
-        values = {**(filters or {}), "limit": limit, "offset": offset}
+            if filters:
+                for key, value in filters.items():
+                    query = query.eq(key, value)
 
-        return await self.db.fetch_all(query=query, values=values)
+            response = await query.range(offset, offset + limit - 1).execute()
+            return response.data
+        except Exception as e:
+            logger.error(f"Failed to list {self.table_name}", error=str(e))
+            raise
 
     async def update(self, id: UUID, data: UpdateSchemaType) -> APIResponse:
         """
