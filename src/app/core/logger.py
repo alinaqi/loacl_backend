@@ -1,3 +1,7 @@
+"""
+Logger configuration module.
+"""
+
 import logging
 import sys
 from typing import Any
@@ -8,21 +12,19 @@ def get_logger(name: str) -> logging.Logger:
     Get a configured logger instance.
 
     Args:
-        name: Name for the logger
+        name: Logger name (usually __name__)
 
     Returns:
-        Configured logger instance
+        logging.Logger: Configured logger instance
     """
     logger = logging.getLogger(name)
 
-    # Only add handler if logger doesn't have any
+    # Only add handler if logger doesn't have one
     if not logger.handlers:
         handler = logging.StreamHandler(sys.stdout)
-        formatter = logging.Formatter(
-            '{"timestamp": "%(asctime)s", "level": "%(levelname)s", "message": "%(message)s", '
-            '"module": "%(module)s", "function": "%(funcName)s", "line": %(lineno)d}'
+        handler.setFormatter(
+            logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
         )
-        handler.setFormatter(formatter)
         logger.addHandler(handler)
         logger.setLevel(logging.INFO)
 

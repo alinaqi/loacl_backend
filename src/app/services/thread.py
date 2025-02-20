@@ -5,11 +5,11 @@ Thread service module.
 from typing import List, Optional
 from uuid import UUID
 
-from fastapi import Depends, HTTPException
+from fastapi import HTTPException
 
 from app.core.logger import get_logger
 from app.models.thread import Thread, ThreadCreate, ThreadUpdate
-from app.repositories.thread import ThreadRepository, get_thread_repository
+from app.repositories.thread import ThreadRepository
 from app.services.base import BaseService
 from app.services.openai import OpenAIService
 
@@ -21,8 +21,8 @@ class ThreadService(BaseService):
 
     def __init__(
         self,
-        thread_repository: ThreadRepository = Depends(get_thread_repository),
-        openai_service: OpenAIService = Depends(),
+        thread_repository: ThreadRepository,
+        openai_service: OpenAIService,
     ) -> None:
         """
         Initialize the service.

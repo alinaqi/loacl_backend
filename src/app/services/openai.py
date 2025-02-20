@@ -38,14 +38,14 @@ def get_openai_client(settings: Settings = Depends(get_settings)) -> AsyncOpenAI
 class OpenAIService:
     """OpenAI service for managing assistants and threads."""
 
-    def __init__(self, settings: Settings = Depends(get_settings)):
+    def __init__(self, client: AsyncOpenAI):
         """
         Initialize the OpenAI service.
 
         Args:
-            settings: Application settings
+            client: AsyncOpenAI client instance
         """
-        self.client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
+        self.client = client
 
     async def create_assistant(
         self,

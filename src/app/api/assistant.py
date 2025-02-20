@@ -2,31 +2,24 @@
 Assistant configuration endpoints.
 """
 
-from typing import Optional
-from uuid import UUID
+from fastapi import APIRouter, HTTPException
 
-from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
-
-from app.core.config import get_settings
 from app.models.assistant import AssistantConfiguration
-from app.services.assistant import AssistantService
+from app.services.dependencies import get_assistant_service
 
 router = APIRouter(prefix="/assistant", tags=["Assistant"])
 
+# Get singleton service instance
+assistant_service = get_assistant_service()
 
-@router.get("/configuration", response_model=AssistantConfiguration)
-async def get_configuration(
-    assistant_service: AssistantService = Depends(),
-) -> AssistantConfiguration:
+
+@router.get("/configuration")
+async def get_configuration():
     """
     Get current assistant configuration.
 
-    Args:
-        assistant_service: Injected assistant service
-
     Returns:
-        AssistantConfiguration: Current assistant configuration
+        dict: Current configuration with status
 
     Raises:
         HTTPException: If configuration retrieval fails
@@ -34,8 +27,8 @@ async def get_configuration(
     try:
         # Get current assistant configuration
         config = await assistant_service.get_configuration()
-        return AssistantConfiguration(**config)
+        return {"status": "success", "data": config}
     except Exception as e:
         raise HTTPException(
-            status_code=500, detail=f"Failed to get assistant configuration: {str(e)}"
+            status_code=500, detail=f"Failed to get configuration: {str(e)}"
         )

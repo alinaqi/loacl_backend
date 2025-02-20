@@ -1,10 +1,14 @@
+"""
+Authentication endpoints module.
+"""
+
 from typing import Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from app.core.config import get_settings
+from app.core.logger import get_logger
 from app.models.assistant import AssistantInitResponse
 from app.models.auth import (
     GuestSessionRequest,
@@ -13,10 +17,14 @@ from app.models.auth import (
     TokenRequest,
     TokenResponse,
 )
-from app.services.assistant import AssistantService
-from app.services.auth import AuthService
+from app.services.dependencies import get_assistant_service, get_auth_service
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
+logger = get_logger(__name__)
+
+# Get singleton service instances
+assistant_service = get_assistant_service()
+auth_service = get_auth_service()
 
 
 class AssistantInitRequest(BaseModel):
@@ -27,15 +35,12 @@ class AssistantInitRequest(BaseModel):
 
 
 @router.post("/initialize", response_model=AssistantInitResponse)
-async def initialize_assistant(
-    request: AssistantInitRequest, assistant_service: AssistantService = Depends()
-) -> AssistantInitResponse:
+async def initialize_assistant(request: AssistantInitRequest) -> AssistantInitResponse:
     """
     Initialize an assistant session
 
     Args:
         request: Assistant initialization parameters
-        assistant_service: Injected assistant service
 
     Returns:
         AssistantInitResponse: Initialized assistant details
@@ -54,15 +59,12 @@ async def initialize_assistant(
 
 
 @router.post("/token", response_model=TokenResponse)
-async def get_auth_token(
-    request: TokenRequest, auth_service: AuthService = Depends()
-) -> TokenResponse:
+async def get_auth_token(request: TokenRequest) -> TokenResponse:
     """
     Get authentication token for persistent user sessions.
 
     Args:
         request: Token request with client credentials
-        auth_service: Injected auth service
 
     Returns:
         TokenResponse: Authentication token response
@@ -79,15 +81,12 @@ async def get_auth_token(
 
 
 @router.post("/guest", response_model=GuestSessionResponse)
-async def create_guest_session(
-    request: GuestSessionRequest, auth_service: AuthService = Depends()
-) -> GuestSessionResponse:
+async def create_guest_session(request: GuestSessionRequest) -> GuestSessionResponse:
     """
     Create a temporary guest session.
 
     Args:
         request: Guest session request parameters
-        auth_service: Injected auth service
 
     Returns:
         GuestSessionResponse: Guest session details
@@ -105,26 +104,21 @@ async def create_guest_session(
 
 
 @router.post("/convert-session", response_model=TokenResponse)
-async def convert_session(
-    request: SessionConversionRequest,
-    auth_service: AuthService = Depends(),
-) -> dict:
+async def convert_session(request: SessionConversionRequest) -> TokenResponse:
     """
     Convert a guest session to an authenticated session.
 
     Args:
         request: Session conversion request
-        auth_service: Authentication service
 
     Returns:
-        dict: New authentication token response
+        TokenResponse: New authentication token response
 
     Raises:
         HTTPException: If session conversion fails
     """
     try:
-        response = await auth_service.convert_guest_session(request)
-        return {"status": "success", "data": response.dict()}
+        return await auth_service.convert_guest_session(request)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
@@ -133,22 +127,18 @@ async def convert_session(
 
 
 @router.delete("/guest/sessions/{session_id}", status_code=204)
-async def delete_guest_session(
-    session_id: UUID,
-    auth_service: AuthService = Depends(),
-) -> None:
+async def delete_guest_session(session_id: UUID) -> None:
     """
     Delete a guest session and all associated data.
 
     Args:
         session_id: The ID of the guest session to delete
-        auth_service: Injected auth service
 
     Raises:
         HTTPException: If session deletion fails or session is not found
     """
     try:
-        await auth_service.delete_guest_session(session_id)
+        await auth_service.delete_guest_session(str(session_id))
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:

@@ -6,13 +6,7 @@ import uuid
 from typing import Dict, List, Optional
 from uuid import UUID
 
-from fastapi import Depends
-from openai.types.beta import Assistant as OpenAIAssistant
-from supabase import Client
-
-from app.core.config import Settings, get_settings
 from app.core.logger import get_logger
-from app.core.supabase import get_supabase_client
 from app.models.assistant import (
     Assistant,
     AssistantCreate,
@@ -31,21 +25,18 @@ class AssistantService(BaseService):
 
     def __init__(
         self,
-        settings: Settings = Depends(get_settings),
-        client: Client = Depends(get_supabase_client),
-        openai_service: OpenAIService = Depends(),
+        assistant_repository: AssistantRepository,
+        openai_service: OpenAIService,
     ):
         """
         Initialize the service.
 
         Args:
-            settings: Application settings
-            client: Supabase client
+            assistant_repository: Repository for assistant operations
             openai_service: OpenAI service for API operations
         """
         super().__init__()
-        self.settings = settings
-        self.assistant_repo = AssistantRepository(client)
+        self.assistant_repo = assistant_repository
         self.openai_service = openai_service
 
     async def create_assistant(
@@ -318,33 +309,19 @@ class AssistantService(BaseService):
             logger.error("Failed to initialize assistant", error=str(e))
             raise
 
-    async def get_configuration(self) -> dict:
+    async def get_configuration(self) -> Dict:
         """
         Get current assistant configuration.
 
         Returns:
-            dict: Current assistant configuration
+            Dict: Current configuration
         """
         try:
-            # Get current assistant from repository
-            assistant = await self.assistant_repo.get_current()
-            if not assistant:
-                return {
-                    "temperature": 0.7,
-                    "model": "gpt-4-turbo-preview",
-                    "tools_enabled": [],
-                    "custom_instructions": None,
-                    "metadata": {},
-                }
-
-            # Return configuration
-            return {
-                "temperature": assistant.metadata.get("temperature", 0.7),
-                "model": assistant.model,
-                "tools_enabled": assistant.tools_enabled,
-                "custom_instructions": assistant.instructions,
-                "metadata": assistant.metadata,
-            }
+            # Get assistant configuration from database
+            response = await self.client.table("assistant_config").select("*").execute()
+            if response.data:
+                return response.data[0]
+            return {}
         except Exception as e:
             logger.error("Failed to get assistant configuration", error=str(e))
             raise

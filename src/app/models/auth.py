@@ -3,7 +3,7 @@ Authentication models module.
 """
 
 from datetime import datetime
-from typing import Optional
+from typing import Dict, Optional
 from uuid import UUID
 
 from pydantic import BaseModel, EmailStr, Field
@@ -29,59 +29,35 @@ class LoginResponse(BaseResponse):
 class GuestSessionRequest(BaseModel):
     """Guest session request model."""
 
-    device_id: Optional[str] = Field(None, description="Device identifier")
-    metadata: Optional[dict] = Field(
-        default_factory=dict, description="Session metadata"
-    )
+    metadata: Optional[Dict] = None
 
 
-class GuestSessionResponse(BaseResponse):
+class GuestSessionResponse(BaseModel):
     """Guest session response model."""
 
-    session_id: UUID = Field(..., description="Session ID")
-    access_token: str = Field(..., description="JWT access token")
-    token_type: str = Field(default="bearer", description="Token type")
+    session_id: str
+    expires_at: datetime
 
 
 class SessionConversionRequest(BaseModel):
-    """Request model for converting a guest session to an authenticated session."""
+    """Session conversion request model."""
 
-    session_id: UUID
+    session_id: str
     client_id: str
-    client_secret: str
-
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "session_id": "123e4567-e89b-12d3-a456-426614174000",
-                "client_id": "client_123",
-                "client_secret": "secret_456",
-            }
-        }
 
 
 class TokenRequest(BaseModel):
     """Token request model."""
 
-    client_id: str = Field(..., description="Client ID for authentication")
-    client_secret: str = Field(..., description="Client secret for authentication")
+    client_id: str
+    client_secret: str
 
 
 class TokenResponse(BaseModel):
     """Token response model."""
 
-    access_token: str = Field(..., description="JWT access token")
-    token_type: str = Field(default="bearer", description="Token type")
-    expires_at: datetime = Field(..., description="Token expiration timestamp")
-
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-                "token_type": "bearer",
-                "expires_at": "2024-02-20T12:00:00Z",
-            }
-        }
+    access_token: str
+    token_type: str = "bearer"
 
 
 class TokenData(BaseModel):

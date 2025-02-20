@@ -18,7 +18,7 @@ from app.api.messages import router as messages_router
 from app.api.preferences import router as preferences_router
 from app.api.threads import router as threads_router
 from app.core.config import get_settings
-from app.core.di import RequestScopeMiddleware
+from app.core.di import RequestScopeMiddleware, get_openai_service
 from app.core.logging import configure_logging
 from app.utils.logging import setup_logging
 from app.utils.middleware import RequestLoggingMiddleware

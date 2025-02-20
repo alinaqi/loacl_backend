@@ -2,17 +2,17 @@
 Base repository module for database operations.
 """
 
-from typing import Any, Dict, Generic, List, Optional, TypeVar
+from typing import Generic, List, Optional, TypeVar
 from uuid import UUID
 
-from postgrest import APIResponse
-from supabase import Client
+from pydantic import BaseModel
+from supabase.client import Client
 
 from app.core.logger import get_logger
 
-ModelType = TypeVar("ModelType")
-CreateSchemaType = TypeVar("CreateSchemaType")
-UpdateSchemaType = TypeVar("UpdateSchemaType")
+ModelType = TypeVar("ModelType", bound=BaseModel)
+CreateSchemaType = TypeVar("CreateSchemaType", bound=BaseModel)
+UpdateSchemaType = TypeVar("UpdateSchemaType", bound=BaseModel)
 
 logger = get_logger(__name__)
 
@@ -27,10 +27,10 @@ class BaseRepository(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
         Args:
             client: Supabase client
         """
-        self.client = client
+        self._client = client
         self.table_name = ""  # Override in child classes
 
-    async def create(self, data: CreateSchemaType) -> APIResponse:
+    async def create(self, data: CreateSchemaType) -> ModelType:
         """
         Create a new record.
 
@@ -38,21 +38,22 @@ class BaseRepository(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
             data: Data to create
 
         Returns:
-            APIResponse: Created record
+            ModelType: Created record
         """
         try:
-            return (
-                await self.client.table(self.table_name)
+            response = (
+                await self._client.table(self.table_name)
                 .insert(data.model_dump())
                 .execute()
             )
+            return ModelType(**response.data[0])
         except Exception as e:
             logger.error(
                 f"Failed to create record in {self.table_name}", exc_info=str(e)
             )
             raise
 
-    async def get(self, id: UUID) -> Optional[Dict]:
+    async def get(self, id: UUID) -> Optional[ModelType]:
         """
         Get record by ID.
 
@@ -60,48 +61,49 @@ class BaseRepository(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
             id: Record ID
 
         Returns:
-            Optional[Dict]: Record if found
+            Optional[ModelType]: Record if found
         """
         try:
             response = (
-                await self.client.table(self.table_name)
+                await self._client.table(self.table_name)
                 .select("*")
                 .eq("id", str(id))
+                .single()
                 .execute()
             )
-            return response.data[0] if response.data else None
+            return ModelType(**response.data) if response.data else None
         except Exception as e:
             logger.error(f"Failed to get {self.table_name}", error=str(e))
             raise
 
     async def list(
-        self, limit: int = 100, offset: int = 0, filters: Optional[Dict] = None
-    ) -> List[Dict]:
+        self, filters: Optional[dict] = None, limit: int = 100, offset: int = 0
+    ) -> List[ModelType]:
         """
         List records with optional filtering.
 
         Args:
+            filters: Optional filters
             limit: Maximum records to return
             offset: Number of records to skip
-            filters: Optional filters
 
         Returns:
-            List[Dict]: List of records
+            List[ModelType]: List of records
         """
         try:
-            query = self.client.table(self.table_name).select("*")
+            query = self._client.table(self.table_name).select("*")
 
             if filters:
                 for key, value in filters.items():
                     query = query.eq(key, value)
 
             response = await query.range(offset, offset + limit - 1).execute()
-            return response.data
+            return [ModelType(**item) for item in response.data]
         except Exception as e:
             logger.error(f"Failed to list {self.table_name}", error=str(e))
             raise
 
-    async def update(self, id: UUID, data: UpdateSchemaType) -> APIResponse:
+    async def update(self, id: UUID, data: UpdateSchemaType) -> ModelType:
         """
         Update a record.
 
@@ -110,36 +112,31 @@ class BaseRepository(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
             data: Data to update
 
         Returns:
-            APIResponse: Updated record
+            ModelType: Updated record
         """
         try:
-            return (
-                await self.client.table(self.table_name)
+            response = (
+                await self._client.table(self.table_name)
                 .update(data.model_dump(exclude_unset=True))
                 .eq("id", str(id))
                 .execute()
             )
+            return ModelType(**response.data[0])
         except Exception as e:
             logger.error(f"Failed to update {self.table_name}", error=str(e))
             raise
 
-    async def delete(self, id: UUID) -> APIResponse:
+    async def delete(self, id: UUID) -> None:
         """
         Delete a record.
 
         Args:
             id: Record ID
-
-        Returns:
-            APIResponse: Deletion response
         """
         try:
-            return (
-                await self.client.table(self.table_name)
-                .delete()
-                .eq("id", str(id))
-                .execute()
-            )
+            await self._client.table(self.table_name).delete().eq(
+                "id", str(id)
+            ).execute()
         except Exception as e:
             logger.error(f"Failed to delete {self.table_name}", error=str(e))
             raise
