@@ -2,14 +2,16 @@
 
 import asyncio
 from typing import Any, AsyncGenerator, Generator
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from fastapi import FastAPI
+from fastapi.testclient import TestClient
 from httpx import AsyncClient
 from postgrest import AsyncPostgrestClient
 
 from app.core.config import get_settings
+from app.main import app
 
 settings = get_settings()
 
@@ -80,3 +82,36 @@ async def setup_test_schema(
 
     # Clean up test data after test
     await postgrest.rpc("cleanup_test_schema").execute()
+
+
+@pytest.fixture
+def client() -> TestClient:
+    """
+    Create a test client for the FastAPI application.
+
+    Returns:
+        TestClient: FastAPI test client
+    """
+    return TestClient(app)
+
+
+@pytest.fixture
+def mock_openai_service() -> AsyncMock:
+    """
+    Create a mock OpenAI service.
+
+    Returns:
+        AsyncMock: Mock OpenAI service
+    """
+    return AsyncMock()
+
+
+@pytest.fixture
+def mock_conversation_service() -> AsyncMock:
+    """
+    Create a mock conversation service.
+
+    Returns:
+        AsyncMock: Mock conversation service
+    """
+    return AsyncMock()

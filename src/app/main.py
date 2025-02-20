@@ -12,6 +12,7 @@ from fastapi.openapi.docs import get_swagger_ui_html
 from fastapi.openapi.utils import get_openapi
 
 from app.api.auth import router as auth_router
+from app.api.messages import router as messages_router
 from app.core.config import get_settings
 from app.core.di import RequestScopeMiddleware
 from app.core.logging import configure_logging
@@ -112,6 +113,7 @@ def create_application() -> FastAPI:
 
     # Include routers
     application.include_router(auth_router)
+    application.include_router(messages_router)
 
     @application.get(
         "/health",
