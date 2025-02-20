@@ -12,6 +12,7 @@ from typing import AsyncGenerator, Callable, Dict, Optional, Type, TypeVar
 from fastapi import Depends, Request
 from openai import AsyncOpenAI
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
+from starlette.responses import Response
 from supabase import create_client
 from supabase.lib.client_options import ClientOptions as Client
 
@@ -255,20 +256,39 @@ async def get_repository_dependency(
 
 # Add FastAPI middleware for request scoping
 class RequestScopeMiddleware(BaseHTTPMiddleware):
-    """Middleware for managing request-scoped dependencies."""
+    """Middleware for request-scoped dependency injection."""
 
-    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint):
-        """Handle request and cleanup scoped dependencies."""
-        # Generate unique ID for this request scope
-        scope_id = str(uuid.uuid4())
-        request.state.scope_id = scope_id
+    async def dispatch(
+        self,
+        request: Request,
+        call_next: RequestResponseEndpoint,
+    ) -> Response:
+        """
+        Process the request through middleware.
 
-        try:
-            response = await call_next(request)
-            return response
-        finally:
-            # Clean up scoped dependencies
-            container.cleanup_scope(scope_id)
+        Args:
+            request: Current request
+            call_next: Next middleware/endpoint
+
+        Returns:
+            Response: Response from next middleware/endpoint
+        """
+        # Initialize services
+        settings = get_settings()
+
+        # Initialize repositories
+        assistant_repo = AssistantRepository()
+
+        # Initialize services
+        assistant_service = AssistantService(
+            settings=settings, assistant_repo=assistant_repo
+        )
+
+        # Add to request state
+        request.state.settings = settings
+        request.state.assistant_service = assistant_service
+
+        return await call_next(request)
 
 
 # Add FastAPI dependency for scoped service injection

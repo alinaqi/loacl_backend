@@ -5,20 +5,20 @@ OpenAI service module.
 from functools import lru_cache
 from typing import Any, Dict, List, Optional
 
+from fastapi import Depends
 from openai import AsyncOpenAI
 from openai.types.beta import Assistant, Thread
 from openai.types.beta.threads import Run
 from openai.types.beta.threads import ThreadMessage as Message
 
-from app.core.config import get_settings
-from app.core.logging import get_logger
+from app.core.config import Settings, get_settings
+from app.core.logger import get_logger
 
-settings = get_settings()
 logger = get_logger(__name__)
 
 
 @lru_cache()
-def get_openai_client() -> AsyncOpenAI:
+def get_openai_client(settings: Settings = Depends(get_settings)) -> AsyncOpenAI:
     """
     Get a cached OpenAI client instance.
 
@@ -31,14 +31,14 @@ def get_openai_client() -> AsyncOpenAI:
 class OpenAIService:
     """OpenAI service for managing assistants and threads."""
 
-    def __init__(self, client: AsyncOpenAI) -> None:
+    def __init__(self, settings: Settings = Depends(get_settings)):
         """
         Initialize the OpenAI service.
 
         Args:
-            client: AsyncOpenAI client instance
+            settings: Application settings
         """
-        self.client = client
+        self.client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
 
     async def create_assistant(
         self,
@@ -219,3 +219,19 @@ class OpenAIService:
         except Exception as e:
             logger.error("Failed to get messages", error=str(e))
             raise
+
+    async def get_assistant(self, assistant_id: str) -> Optional[Assistant]:
+        """
+        Get assistant from OpenAI.
+
+        Args:
+            assistant_id: OpenAI assistant ID
+
+        Returns:
+            Optional[Assistant]: Assistant if found
+        """
+        try:
+            return await self.client.beta.assistants.retrieve(assistant_id)
+        except Exception as e:
+            logger.error("Failed to get OpenAI assistant", error=str(e))
+            return None

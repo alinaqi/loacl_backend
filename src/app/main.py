@@ -11,6 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.docs import get_swagger_ui_html
 from fastapi.openapi.utils import get_openapi
 
+from app.api.auth import router as auth_router
 from app.core.config import get_settings
 from app.core.di import RequestScopeMiddleware
 from app.core.logging import configure_logging
@@ -109,8 +110,8 @@ def create_application() -> FastAPI:
     # Configure logging
     configure_logging()
 
-    # Add routers here
-    # application.include_router(...)
+    # Include routers
+    application.include_router(auth_router)
 
     @application.get(
         "/health",

@@ -2,13 +2,21 @@
 Assistant service module.
 """
 
+import uuid
 from typing import Dict, List, Optional
 from uuid import UUID
 
+from fastapi import Depends
 from openai.types.beta import Assistant as OpenAIAssistant
 
+from app.core.config import Settings, get_settings
 from app.core.logger import get_logger
-from app.models.assistant import Assistant, AssistantCreate, AssistantUpdate
+from app.models.assistant import (
+    Assistant,
+    AssistantCreate,
+    AssistantInitResponse,
+    AssistantUpdate,
+)
 from app.repositories.assistant import AssistantRepository
 from app.services.base import BaseService
 from app.services.openai import OpenAIService
@@ -21,18 +29,21 @@ class AssistantService(BaseService):
 
     def __init__(
         self,
-        assistant_repository: AssistantRepository,
-        openai_service: OpenAIService,
-    ) -> None:
+        settings: Settings = Depends(get_settings),
+        assistant_repo: AssistantRepository = Depends(),
+        openai_service: OpenAIService = Depends(),
+    ):
         """
         Initialize the service.
 
         Args:
-            assistant_repository: Repository for assistant operations
+            settings: Application settings
+            assistant_repo: Repository for assistant operations
             openai_service: OpenAI service for API operations
         """
         super().__init__()
-        self.assistant_repository = assistant_repository
+        self.settings = settings
+        self.assistant_repo = assistant_repo
         self.openai_service = openai_service
 
     async def create_assistant(
@@ -64,7 +75,7 @@ class AssistantService(BaseService):
                 openai_assistant_id=openai_assistant.id,
                 **data.model_dump(),
             )
-            response = await self.assistant_repository.create(assistant_data)
+            response = await self.assistant_repo.create(assistant_data)
             return Assistant(**response.data[0])
 
         except Exception as e:
@@ -82,7 +93,7 @@ class AssistantService(BaseService):
             Optional[Assistant]: Found assistant or None
         """
         try:
-            response = await self.assistant_repository.get(assistant_id)
+            response = await self.assistant_repo.get(assistant_id)
             return Assistant(**response) if response else None
         except Exception as e:
             logger.error("Failed to get assistant", error=str(e))
@@ -106,7 +117,7 @@ class AssistantService(BaseService):
             List[Assistant]: List of assistants
         """
         try:
-            response = await self.assistant_repository.list(
+            response = await self.assistant_repo.list(
                 limit=limit,
                 offset=offset,
                 filters=filters,
@@ -148,7 +159,7 @@ class AssistantService(BaseService):
             )
 
             # Update local record
-            response = await self.assistant_repository.update(assistant_id, data)
+            response = await self.assistant_repo.update(assistant_id, data)
             return Assistant(**response.data[0])
 
         except Exception as e:
@@ -177,7 +188,7 @@ class AssistantService(BaseService):
             )
 
             # Delete local record
-            await self.assistant_repository.delete(assistant_id)
+            await self.assistant_repo.delete(assistant_id)
             return True
 
         except Exception as e:
@@ -215,7 +226,7 @@ class AssistantService(BaseService):
             files = current.metadata.get("files", [])
             files.append(file_id)
             data = AssistantUpdate(metadata={"files": files})
-            response = await self.assistant_repository.update(assistant_id, data)
+            response = await self.assistant_repo.update(assistant_id, data)
             return Assistant(**response.data[0])
 
         except Exception as e:
@@ -254,10 +265,53 @@ class AssistantService(BaseService):
             if file_id in files:
                 files.remove(file_id)
                 data = AssistantUpdate(metadata={"files": files})
-                response = await self.assistant_repository.update(assistant_id, data)
+                response = await self.assistant_repo.update(assistant_id, data)
                 return Assistant(**response.data[0])
             return current
 
         except Exception as e:
             logger.error("Failed to remove file from assistant", error=str(e))
+            raise
+
+    async def initialize(
+        self, assistant_id: str, configuration: Optional[Dict] = None
+    ) -> AssistantInitResponse:
+        """
+        Initialize an assistant session
+
+        Args:
+            assistant_id: OpenAI assistant ID
+            configuration: Optional configuration parameters
+
+        Returns:
+            AssistantInitResponse: Initialized assistant details
+        """
+        try:
+            # Validate assistant exists
+            assistant = await self.assistant_repo.get_by_openai_id(assistant_id)
+            if not assistant:
+                raise ValueError(f"Assistant {assistant_id} not found")
+
+            # Validate with OpenAI
+            openai_assistant = await self.openai_service.get_assistant(assistant_id)
+            if not openai_assistant:
+                raise ValueError(f"OpenAI assistant {assistant_id} not found")
+
+            # Generate session ID
+            session_id = str(uuid.uuid4())
+
+            # Merge configuration with defaults
+            final_config = {
+                **(configuration or {}),
+                "assistant_id": assistant_id,
+                "model": openai_assistant.model,
+            }
+
+            return AssistantInitResponse(
+                assistant_id=assistant_id,
+                session_id=session_id,
+                configuration=final_config,
+            )
+        except Exception as e:
+            logger.error("Failed to initialize assistant", error=str(e))
             raise

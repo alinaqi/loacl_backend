@@ -5,9 +5,12 @@ Base repository module for database operations.
 from typing import Any, Dict, Generic, List, Optional, TypeVar
 from uuid import UUID
 
+from databases import Database
+from fastapi import Depends
 from postgrest import APIResponse
 from supabase import Client
 
+from app.core.db import get_database
 from app.core.logging import get_logger
 
 ModelType = TypeVar("ModelType")
@@ -20,14 +23,15 @@ logger = get_logger(__name__)
 class BaseRepository(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
     """Base repository for database operations."""
 
-    def __init__(self, table_name: str) -> None:
+    def __init__(self, db: Database = Depends(get_database)):
         """
         Initialize the repository.
 
         Args:
-            table_name: Name of the table in database
+            db: Database connection
         """
-        self.table_name = table_name
+        self.db = db
+        self.table_name = ""  # Override in child classes
 
     async def create(self, data: CreateSchemaType) -> APIResponse:
         """
@@ -49,65 +53,42 @@ class BaseRepository(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
             logger.error(f"Failed to create {self.table_name}", error=str(e))
             raise
 
-    async def get(self, id: UUID) -> Optional[APIResponse]:
+    async def get(self, id: Any) -> Optional[Dict]:
         """
-        Get a record by ID.
+        Get record by ID.
 
         Args:
             id: Record ID
 
         Returns:
-            Optional[APIResponse]: Found record or None
+            Optional[Dict]: Record if found
         """
-        try:
-            response = (
-                await self.client.table(self.table_name)
-                .select("*")
-                .eq("id", str(id))
-                .execute()
-            )
-            return response.data[0] if response.data else None
-        except Exception as e:
-            logger.error(f"Failed to get {self.table_name}", error=str(e))
-            raise
+        query = f"SELECT * FROM {self.table_name} WHERE id = :id"
+        return await self.db.fetch_one(query=query, values={"id": id})
 
     async def list(
-        self,
-        filters: Optional[Dict[str, Any]] = None,
-        limit: int = 100,
-        offset: int = 0,
-        order_by: Optional[str] = None,
-        ascending: bool = False,
-    ) -> APIResponse:
+        self, limit: int = 100, offset: int = 0, filters: Optional[Dict] = None
+    ) -> List[Dict]:
         """
-        List records with optional filtering and pagination.
+        List records with optional filtering.
 
         Args:
-            filters: Optional filters to apply
-            limit: Maximum number of records to return
+            limit: Maximum records to return
             offset: Number of records to skip
-            order_by: Column to order by
-            ascending: Sort in ascending order
+            filters: Optional filters
 
         Returns:
-            APIResponse: List of records
+            List[Dict]: List of records
         """
-        try:
-            query = self.client.table(self.table_name).select("*")
+        query = f"SELECT * FROM {self.table_name}"
+        if filters:
+            conditions = " AND ".join(f"{k} = :{k}" for k in filters.keys())
+            query += f" WHERE {conditions}"
+        query += " LIMIT :limit OFFSET :offset"
 
-            if filters:
-                for key, value in filters.items():
-                    query = query.eq(key, value)
+        values = {**(filters or {}), "limit": limit, "offset": offset}
 
-            if order_by:
-                query = query.order(order_by, desc=not ascending)
-
-            query = query.range(offset, offset + limit - 1)
-
-            return await query.execute()
-        except Exception as e:
-            logger.error(f"Failed to list {self.table_name}", error=str(e))
-            raise
+        return await self.db.fetch_all(query=query, values=values)
 
     async def update(self, id: UUID, data: UpdateSchemaType) -> APIResponse:
         """
