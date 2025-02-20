@@ -44,12 +44,20 @@ class GuestSessionResponse(BaseResponse):
 
 
 class SessionConversionRequest(BaseModel):
-    """Session conversion request model."""
+    """Request model for converting a guest session to an authenticated session."""
 
-    session_id: UUID = Field(..., description="Guest session ID to convert")
-    email: EmailStr = Field(..., description="User's email address")
-    password: str = Field(..., min_length=8, description="User's password")
-    full_name: str = Field(..., description="User's full name")
+    session_id: UUID
+    client_id: str
+    client_secret: str
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "session_id": "123e4567-e89b-12d3-a456-426614174000",
+                "client_id": "client_123",
+                "client_secret": "secret_456",
+            }
+        }
 
 
 class TokenRequest(BaseModel):

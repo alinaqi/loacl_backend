@@ -8,6 +8,7 @@ from app.models.assistant import AssistantInitResponse
 from app.models.auth import (
     GuestSessionRequest,
     GuestSessionResponse,
+    SessionConversionRequest,
     TokenRequest,
     TokenResponse,
 )
@@ -99,3 +100,31 @@ async def create_guest_session(
         raise HTTPException(
             status_code=400, detail=f"Failed to create guest session: {str(e)}"
         )
+
+
+@router.post("/convert-session", response_model=TokenResponse)
+async def convert_session(
+    request: SessionConversionRequest,
+    auth_service: AuthService = Depends(),
+) -> dict:
+    """
+    Convert a guest session to an authenticated session.
+
+    Args:
+        request: Session conversion request
+        auth_service: Authentication service
+
+    Returns:
+        dict: New authentication token response
+
+    Raises:
+        HTTPException: If session conversion fails
+    """
+    try:
+        response = await auth_service.convert_guest_session(request)
+        return {"status": "success", "data": response.dict()}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error("Failed to convert session", error=str(e))
+        raise HTTPException(status_code=500, detail="Failed to convert session")

@@ -11,7 +11,12 @@ from jose import jwt
 
 from app.core.config import Settings, get_settings
 from app.core.logger import get_logger
-from app.models.auth import GuestSessionRequest, GuestSessionResponse, TokenResponse
+from app.models.auth import (
+    GuestSessionRequest,
+    GuestSessionResponse,
+    SessionConversionRequest,
+    TokenResponse,
+)
 from app.repositories.session import SessionRepository
 from app.repositories.user import UserRepository
 
@@ -121,4 +126,66 @@ class AuthService:
 
         except Exception as e:
             logger.error("Failed to create guest session", error=str(e))
+            raise
+
+    async def convert_guest_session(
+        self, request: SessionConversionRequest
+    ) -> TokenResponse:
+        """
+        Convert a guest session to an authenticated session.
+
+        Args:
+            request: Session conversion request containing session ID and user credentials
+
+        Returns:
+            TokenResponse: New authentication token for the converted session
+
+        Raises:
+            ValueError: If session not found or invalid credentials
+            HTTPException: If session conversion fails
+        """
+        try:
+            # Validate user credentials
+            user = await self.user_repo.get_by_client_credentials(
+                client_id=request.client_id, client_secret=request.client_secret
+            )
+            if not user:
+                raise ValueError("Invalid client credentials")
+
+            # Get and validate guest session
+            session = await self.session_repo.get_by_id(request.session_id)
+            if not session:
+                raise ValueError("Session not found")
+            if session.session_type != "guest":
+                raise ValueError("Only guest sessions can be converted")
+            if session.status != "active":
+                raise ValueError("Session is not active")
+
+            # Update session with user ID and type
+            updated_session = await self.session_repo.update(
+                session.id,
+                {
+                    "session_type": "authenticated",
+                    "user_id": user.id,
+                    "expires_at": None,  # Authenticated sessions don't expire
+                },
+            )
+            if not updated_session:
+                raise ValueError("Failed to update session")
+
+            # Generate new JWT token
+            expires_delta = timedelta(minutes=self.settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+            expires_at = datetime.utcnow() + expires_delta
+
+            to_encode = {"sub": str(user.id), "exp": expires_at}
+            access_token = jwt.encode(
+                to_encode,
+                self.settings.JWT_SECRET_KEY,
+                algorithm=self.settings.JWT_ALGORITHM,
+            )
+
+            return TokenResponse(access_token=access_token, expires_at=expires_at)
+
+        except Exception as e:
+            logger.error("Failed to convert guest session", error=str(e))
             raise
