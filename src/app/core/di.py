@@ -16,7 +16,9 @@ from supabase import create_client
 from supabase.lib.client_options import ClientOptions as Client
 
 from app.core.config import Settings, get_settings
+from app.repositories.assistant import AssistantRepository
 from app.repositories.base import BaseRepository
+from app.services.assistant import AssistantService
 from app.services.openai import OpenAIService
 
 T = TypeVar("T")
@@ -167,6 +169,22 @@ class DependencyContainer:
         if scope_id in self._scoped_instances:
             del self._scoped_instances[scope_id]
 
+    async def get_assistant_service(self) -> AssistantService:
+        """
+        Get assistant service instance.
+
+        Returns:
+            AssistantService: Assistant service instance
+        """
+        if AssistantService not in self._instances:
+            openai_service = await self.get_openai_service()
+            assistant_repository = await self.get_repository(AssistantRepository)
+            self._instances[AssistantService] = AssistantService(
+                assistant_repository=assistant_repository,
+                openai_service=openai_service,
+            )
+        return self._instances[AssistantService]
+
 
 # Global container instance
 container = DependencyContainer()
@@ -254,4 +272,20 @@ async def get_scoped_service_dependency(
         T: Service instance
     """
     service = await container.get_scoped_service(service_type, request.state.scope_id)
+    yield service
+
+
+async def get_assistant_service(
+    container: DependencyContainer = Depends(get_di_container),
+) -> AsyncGenerator[AssistantService, None]:
+    """
+    FastAPI dependency for getting the assistant service.
+
+    Args:
+        container: Dependency container instance
+
+    Yields:
+        AssistantService: Assistant service instance
+    """
+    service = await container.get_assistant_service()
     yield service
