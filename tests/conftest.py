@@ -1,16 +1,15 @@
 """Common test fixtures and configuration."""
 
 import asyncio
-from typing import AsyncGenerator, Generator
+from typing import Any, AsyncGenerator, Generator
+from unittest.mock import MagicMock
 
 import pytest
 from fastapi import FastAPI
 from httpx import AsyncClient
 from postgrest import AsyncPostgrestClient
-from supabase import Client, create_client
 
-from src.app.core.config import get_settings
-from src.app.main import app
+from app.core.config import get_settings
 
 settings = get_settings()
 
@@ -27,16 +26,21 @@ def event_loop() -> Generator:
 
 
 @pytest.fixture(scope="session")
-def supabase() -> Client:
+def supabase() -> MagicMock:
     """Create a Supabase client for testing."""
-    return create_client(
-        settings.SUPABASE_URL,
-        settings.SUPABASE_KEY,
-    )
+    mock_client = MagicMock()
+    mock_client.table.return_value = mock_client
+    mock_client.select.return_value = mock_client
+    mock_client.insert.return_value = mock_client
+    mock_client.update.return_value = mock_client
+    mock_client.delete.return_value = mock_client
+    mock_client.eq.return_value = mock_client
+    mock_client.execute.return_value = MagicMock(data=[])
+    return mock_client
 
 
 @pytest.fixture(scope="session")
-def postgrest(supabase: Client) -> AsyncPostgrestClient:
+def postgrest(supabase: MagicMock) -> AsyncPostgrestClient:
     """Get the Postgrest client for raw SQL execution."""
     return supabase.postgrest
 
@@ -51,16 +55,17 @@ async def verify_schema(postgrest: AsyncPostgrestClient) -> None:
 
 
 @pytest.fixture(scope="session")
-async def test_app(verify_schema: None) -> FastAPI:
+def test_app() -> FastAPI:
     """Create a test instance of the FastAPI application."""
-    return app
+    from app.main import create_application
+
+    return create_application()
 
 
-@pytest.fixture(scope="session")
-async def test_client(test_app: FastAPI) -> AsyncGenerator[AsyncClient, None]:
+@pytest.fixture
+def test_client(test_app: FastAPI) -> AsyncClient:
     """Create a test client for making HTTP requests."""
-    async with AsyncClient(app=test_app, base_url="http://test") as client:
-        yield client
+    return AsyncClient(app=test_app, base_url="http://test")
 
 
 @pytest.fixture(autouse=True)

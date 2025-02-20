@@ -1,12 +1,14 @@
 """
 OpenAI service module.
 """
+
 from functools import lru_cache
 from typing import Any, Dict, List, Optional
 
 from openai import AsyncOpenAI
 from openai.types.beta import Assistant, Thread
-from openai.types.beta.threads import Message, Run
+from openai.types.beta.threads import Run
+from openai.types.beta.threads import ThreadMessage as Message
 
 from app.core.config import get_settings
 from app.core.logging import get_logger
@@ -19,7 +21,7 @@ logger = get_logger(__name__)
 def get_openai_client() -> AsyncOpenAI:
     """
     Get a cached OpenAI client instance.
-    
+
     Returns:
         AsyncOpenAI: OpenAI client instance
     """
@@ -28,11 +30,16 @@ def get_openai_client() -> AsyncOpenAI:
 
 class OpenAIService:
     """OpenAI service for managing assistants and threads."""
-    
-    def __init__(self) -> None:
-        """Initialize the OpenAI service."""
-        self.client = get_openai_client()
-    
+
+    def __init__(self, client: AsyncOpenAI) -> None:
+        """
+        Initialize the OpenAI service.
+
+        Args:
+            client: AsyncOpenAI client instance
+        """
+        self.client = client
+
     async def create_assistant(
         self,
         name: str,
@@ -44,7 +51,7 @@ class OpenAIService:
     ) -> Assistant:
         """
         Create a new assistant.
-        
+
         Args:
             name: Name of the assistant
             instructions: Instructions for the assistant
@@ -52,7 +59,7 @@ class OpenAIService:
             tools: List of tools for the assistant
             file_ids: List of file IDs to attach
             metadata: Additional metadata
-        
+
         Returns:
             Assistant: Created assistant
         """
@@ -68,7 +75,7 @@ class OpenAIService:
         except Exception as e:
             logger.error("Failed to create assistant", error=str(e))
             raise
-    
+
     async def create_thread(
         self,
         messages: Optional[List[Dict[str, Any]]] = None,
@@ -76,11 +83,11 @@ class OpenAIService:
     ) -> Thread:
         """
         Create a new thread.
-        
+
         Args:
             messages: Initial messages for the thread
             metadata: Additional metadata
-        
+
         Returns:
             Thread: Created thread
         """
@@ -92,7 +99,7 @@ class OpenAIService:
         except Exception as e:
             logger.error("Failed to create thread", error=str(e))
             raise
-    
+
     async def create_message(
         self,
         thread_id: str,
@@ -103,14 +110,14 @@ class OpenAIService:
     ) -> Message:
         """
         Create a new message in a thread.
-        
+
         Args:
             thread_id: Thread ID
             content: Message content
             role: Message role
             file_ids: List of file IDs to attach
             metadata: Additional metadata
-        
+
         Returns:
             Message: Created message
         """
@@ -125,7 +132,7 @@ class OpenAIService:
         except Exception as e:
             logger.error("Failed to create message", error=str(e))
             raise
-    
+
     async def run_thread(
         self,
         thread_id: str,
@@ -136,14 +143,14 @@ class OpenAIService:
     ) -> Run:
         """
         Run an assistant on a thread.
-        
+
         Args:
             thread_id: Thread ID
             assistant_id: Assistant ID
             instructions: Additional instructions for this run
             tools: Additional tools for this run
             metadata: Additional metadata
-        
+
         Returns:
             Run: Created run
         """
@@ -158,15 +165,15 @@ class OpenAIService:
         except Exception as e:
             logger.error("Failed to run thread", error=str(e))
             raise
-    
+
     async def get_run(self, thread_id: str, run_id: str) -> Run:
         """
         Get a run's status.
-        
+
         Args:
             thread_id: Thread ID
             run_id: Run ID
-        
+
         Returns:
             Run: Run object
         """
@@ -178,7 +185,7 @@ class OpenAIService:
         except Exception as e:
             logger.error("Failed to get run", error=str(e))
             raise
-    
+
     async def get_messages(
         self,
         thread_id: str,
@@ -189,14 +196,14 @@ class OpenAIService:
     ) -> List[Message]:
         """
         Get messages from a thread.
-        
+
         Args:
             thread_id: Thread ID
             limit: Maximum number of messages to return
             order: Sort order
             after: Get messages after this ID
             before: Get messages before this ID
-        
+
         Returns:
             List[Message]: List of messages
         """
@@ -211,4 +218,4 @@ class OpenAIService:
             return response.data
         except Exception as e:
             logger.error("Failed to get messages", error=str(e))
-            raise 
+            raise

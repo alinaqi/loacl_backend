@@ -12,6 +12,8 @@ from fastapi.openapi.docs import get_swagger_ui_html
 from fastapi.openapi.utils import get_openapi
 
 from app.core.config import get_settings
+from app.core.di import RequestScopeMiddleware
+from app.core.logging import configure_logging
 from app.utils.logging import setup_logging
 from app.utils.middleware import RequestLoggingMiddleware
 
@@ -101,6 +103,12 @@ def create_application() -> FastAPI:
         allow_headers=["*"],
     )
 
+    # Add request scope middleware
+    application.add_middleware(RequestScopeMiddleware)
+
+    # Configure logging
+    configure_logging()
+
     # Add routers here
     # application.include_router(...)
 
@@ -113,7 +121,7 @@ def create_application() -> FastAPI:
         responses={
             200: {
                 "description": "Successful Response",
-                "content": {"application/json": {"example": {"status": "healthy"}}},
+                "content": {"application/json": {"example": {"status": "ok"}}},
             }
         },
     )
@@ -125,7 +133,7 @@ def create_application() -> FastAPI:
             Dict[str, str]: Health status of the API
         """
         logger.debug("Health check requested")
-        return {"status": "healthy"}
+        return {"status": "ok"}
 
     return application
 
