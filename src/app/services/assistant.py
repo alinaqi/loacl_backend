@@ -315,3 +315,34 @@ class AssistantService(BaseService):
         except Exception as e:
             logger.error("Failed to initialize assistant", error=str(e))
             raise
+
+    async def get_configuration(self) -> dict:
+        """
+        Get current assistant configuration.
+
+        Returns:
+            dict: Current assistant configuration
+        """
+        try:
+            # Get current assistant from repository
+            assistant = await self.assistant_repo.get_current()
+            if not assistant:
+                return {
+                    "temperature": 0.7,
+                    "model": "gpt-4-turbo-preview",
+                    "tools_enabled": [],
+                    "custom_instructions": None,
+                    "metadata": {},
+                }
+
+            # Return configuration
+            return {
+                "temperature": assistant.metadata.get("temperature", 0.7),
+                "model": assistant.model,
+                "tools_enabled": assistant.tools_enabled,
+                "custom_instructions": assistant.instructions,
+                "metadata": assistant.metadata,
+            }
+        except Exception as e:
+            logger.error("Failed to get assistant configuration", error=str(e))
+            raise

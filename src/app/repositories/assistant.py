@@ -28,3 +28,19 @@ class AssistantRepository(BaseRepository):
         """
         result = await self.db.fetch_one(query=query, values={"openai_id": openai_id})
         return Assistant(**result) if result else None
+
+    async def get_current(self) -> Optional[Assistant]:
+        """
+        Get current assistant configuration.
+
+        Returns:
+            Optional[Assistant]: Current assistant if found, None otherwise
+        """
+        query = f"""
+            SELECT * FROM {self.table_name}
+            WHERE is_active = true
+            ORDER BY created_at DESC
+            LIMIT 1
+        """
+        result = await self.db.fetch_one(query=query)
+        return Assistant(**result) if result else None

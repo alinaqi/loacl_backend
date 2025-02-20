@@ -11,6 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.docs import get_swagger_ui_html
 from fastapi.openapi.utils import get_openapi
 
+from app.api.assistant import router as assistant_router
 from app.api.auth import router as auth_router
 from app.api.files import router as files_router
 from app.api.messages import router as messages_router
@@ -116,6 +117,7 @@ def create_application() -> FastAPI:
     application.include_router(auth_router)
     application.include_router(messages_router)
     application.include_router(files_router)
+    application.include_router(assistant_router)
 
     @application.get(
         "/health",

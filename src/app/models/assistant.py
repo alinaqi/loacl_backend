@@ -63,3 +63,28 @@ class AssistantInitResponse(BaseModel):
                 "configuration": {"temperature": 0.7, "model": "gpt-4"},
             }
         }
+
+
+class AssistantConfiguration(BaseModel):
+    """Assistant configuration model."""
+
+    temperature: Optional[float] = Field(default=0.7, description="Model temperature")
+    model: Optional[str] = Field(
+        default="gpt-4-turbo-preview", description="OpenAI model to use"
+    )
+    tools_enabled: Optional[List[str]] = Field(
+        default_factory=list, description="Enabled tools"
+    )
+    custom_instructions: Optional[str] = Field(None, description="Custom instructions")
+    metadata: Dict = Field(default_factory=dict, description="Additional metadata")
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "temperature": 0.7,
+                "model": "gpt-4-turbo-preview",
+                "tools_enabled": ["code_interpreter", "retrieval"],
+                "custom_instructions": "You are a helpful assistant",
+                "metadata": {"key": "value"},
+            }
+        }
