@@ -17,8 +17,9 @@ from supabase.lib.client_options import ClientOptions as Client
 
 from app.core.config import Settings, get_settings
 from app.repositories.assistant import AssistantRepository
-from app.repositories.base import BaseRepository
+from app.repositories.thread import MessageRepository, ThreadRepository
 from app.services.assistant import AssistantService
+from app.services.conversation import ConversationContextService
 from app.services.openai import OpenAIService
 
 T = TypeVar("T")
@@ -185,6 +186,22 @@ class DependencyContainer:
             )
         return self._instances[AssistantService]
 
+    async def get_conversation_context_service(self) -> ConversationContextService:
+        """
+        Get conversation context service instance.
+
+        Returns:
+            ConversationContextService: Conversation context service instance
+        """
+        if ConversationContextService not in self._instances:
+            thread_repository = await self.get_repository(ThreadRepository)
+            message_repository = await self.get_repository(MessageRepository)
+            self._instances[ConversationContextService] = ConversationContextService(
+                thread_repository=thread_repository,
+                message_repository=message_repository,
+            )
+        return self._instances[ConversationContextService]
+
 
 # Global container instance
 container = DependencyContainer()
@@ -288,4 +305,20 @@ async def get_assistant_service(
         AssistantService: Assistant service instance
     """
     service = await container.get_assistant_service()
+    yield service
+
+
+async def get_conversation_context_service(
+    container: DependencyContainer = Depends(get_di_container),
+) -> AsyncGenerator[ConversationContextService, None]:
+    """
+    FastAPI dependency for getting the conversation context service.
+
+    Args:
+        container: Dependency container instance
+
+    Yields:
+        ConversationContextService: Conversation context service instance
+    """
+    service = await container.get_conversation_context_service()
     yield service
