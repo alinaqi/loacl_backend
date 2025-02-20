@@ -42,6 +42,7 @@ env/
 *.log
 logs/
 log/
+*.log.*
 
 # Testing
 .coverage
@@ -90,4 +91,4 @@ Thumbs.db
 uploads/
 temp/
 .pytest_cache/
-.mypy_cache/ 
+.mypy_cache/

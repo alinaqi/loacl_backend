@@ -3,6 +3,7 @@ LOACL Backend API
 Main application module.
 """
 
+import logging
 from typing import Dict
 
 from fastapi import FastAPI, status
@@ -11,6 +12,12 @@ from fastapi.openapi.docs import get_swagger_ui_html
 from fastapi.openapi.utils import get_openapi
 
 from app.core.config import get_settings
+from app.utils.logging import setup_logging
+from app.utils.middleware import RequestLoggingMiddleware
+
+# Initialize logging
+setup_logging()
+logger = logging.getLogger(__name__)
 
 settings = get_settings()
 
@@ -63,6 +70,15 @@ def create_application() -> FastAPI:
     Returns:
         FastAPI: Configured FastAPI application instance
     """
+    logger.info(
+        "Creating FastAPI application",
+        extra={
+            "project_name": settings.PROJECT_NAME,
+            "version": settings.VERSION,
+            "environment": settings.ENV,
+        },
+    )
+
     application = FastAPI(
         title=settings.PROJECT_NAME,
         description=settings.PROJECT_DESCRIPTION,
@@ -72,6 +88,9 @@ def create_application() -> FastAPI:
         openapi_url="/openapi.json",
         swagger_ui_parameters={"defaultModelsExpandDepth": -1},
     )
+
+    # Add request logging middleware
+    application.add_middleware(RequestLoggingMiddleware)
 
     # Configure CORS
     application.add_middleware(
@@ -105,6 +124,7 @@ def create_application() -> FastAPI:
         Returns:
             Dict[str, str]: Health status of the API
         """
+        logger.debug("Health check requested")
         return {"status": "healthy"}
 
     return application
