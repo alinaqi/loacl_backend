@@ -12,6 +12,9 @@ from postgrest import AsyncPostgrestClient
 
 from app.core.config import get_settings
 from app.main import app
+from app.repositories.webhook import WebhookRepository
+from app.services.analytics import AnalyticsService
+from app.services.health import HealthService
 
 settings = get_settings()
 
@@ -115,3 +118,24 @@ def mock_conversation_service() -> AsyncMock:
         AsyncMock: Mock conversation service
     """
     return AsyncMock()
+
+
+@pytest.fixture
+def mock_webhook_repository() -> AsyncMock:
+    """Create a mock webhook repository."""
+    mock = AsyncMock(spec=WebhookRepository)
+    return mock
+
+
+@pytest.fixture
+def mock_health_service() -> AsyncMock:
+    """Create a mock health service."""
+    mock = AsyncMock(spec=HealthService)
+    return mock
+
+
+@pytest.fixture
+def mock_analytics_service() -> AsyncMock:
+    """Create a mock analytics service."""
+    mock = AsyncMock(spec=AnalyticsService)
+    return mock
