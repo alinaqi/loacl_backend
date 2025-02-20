@@ -4,13 +4,15 @@ Authentication service module.
 
 from datetime import datetime, timedelta
 from typing import Optional
+from uuid import UUID
 
 from fastapi import Depends
 from jose import jwt
 
 from app.core.config import Settings, get_settings
 from app.core.logger import get_logger
-from app.models.auth import TokenResponse
+from app.models.auth import GuestSessionRequest, GuestSessionResponse, TokenResponse
+from app.repositories.session import SessionRepository
 from app.repositories.user import UserRepository
 
 logger = get_logger(__name__)
@@ -23,6 +25,7 @@ class AuthService:
         self,
         settings: Settings = Depends(get_settings),
         user_repo: UserRepository = Depends(),
+        session_repo: SessionRepository = Depends(),
     ):
         """
         Initialize service.
@@ -30,9 +33,11 @@ class AuthService:
         Args:
             settings: Application settings
             user_repo: User repository
+            session_repo: Session repository
         """
         self.settings = settings
         self.user_repo = user_repo
+        self.session_repo = session_repo
 
     async def authenticate(self, client_id: str, client_secret: str) -> TokenResponse:
         """
@@ -72,4 +77,48 @@ class AuthService:
 
         except Exception as e:
             logger.error("Authentication failed", error=str(e))
+            raise
+
+    async def create_guest_session(
+        self, request: GuestSessionRequest
+    ) -> GuestSessionResponse:
+        """
+        Create a guest session.
+
+        Args:
+            request: Guest session request
+
+        Returns:
+            GuestSessionResponse: Guest session details
+
+        Raises:
+            ValueError: If session creation fails
+        """
+        try:
+            # Create guest session
+            session = await self.session_repo.create_guest_session(request)
+            if not session:
+                raise ValueError("Failed to create guest session")
+
+            # Generate temporary JWT token
+            expires_at = datetime.fromisoformat(session["expires_at"])
+            to_encode = {
+                "sub": str(session["id"]),
+                "exp": expires_at,
+                "type": "guest",
+            }
+
+            access_token = jwt.encode(
+                to_encode,
+                self.settings.JWT_SECRET_KEY,
+                algorithm=self.settings.JWT_ALGORITHM,
+            )
+
+            return GuestSessionResponse(
+                session_id=session["id"],
+                access_token=access_token,
+            )
+
+        except Exception as e:
+            logger.error("Failed to create guest session", error=str(e))
             raise

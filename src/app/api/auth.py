@@ -5,7 +5,12 @@ from pydantic import BaseModel
 
 from app.core.config import get_settings
 from app.models.assistant import AssistantInitResponse
-from app.models.auth import TokenRequest, TokenResponse
+from app.models.auth import (
+    GuestSessionRequest,
+    GuestSessionResponse,
+    TokenRequest,
+    TokenResponse,
+)
 from app.services.assistant import AssistantService
 from app.services.auth import AuthService
 
@@ -69,3 +74,28 @@ async def get_auth_token(
         )
     except Exception as e:
         raise HTTPException(status_code=401, detail=f"Authentication failed: {str(e)}")
+
+
+@router.post("/guest", response_model=GuestSessionResponse)
+async def create_guest_session(
+    request: GuestSessionRequest, auth_service: AuthService = Depends()
+) -> GuestSessionResponse:
+    """
+    Create a temporary guest session.
+
+    Args:
+        request: Guest session request parameters
+        auth_service: Injected auth service
+
+    Returns:
+        GuestSessionResponse: Guest session details
+
+    Raises:
+        HTTPException: If session creation fails
+    """
+    try:
+        return await auth_service.create_guest_session(request)
+    except Exception as e:
+        raise HTTPException(
+            status_code=400, detail=f"Failed to create guest session: {str(e)}"
+        )
