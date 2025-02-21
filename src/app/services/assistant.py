@@ -149,16 +149,42 @@ class AssistantService:
             user_id: User ID
 
         Returns:
-            True if deleted, False otherwise
+            True if deleted successfully
+
+        Raises:
+            ValueError: If assistant not found
         """
-        result = (
-            self.supabase.table("lacl_assistants")
-            .delete()
-            .eq("id", str(assistant_id))
-            .eq("user_id", str(user_id))
-            .execute()
-        )
-        return bool(result.data)
+        # First verify the assistant exists and belongs to the user
+        assistant = await self.get_assistant(assistant_id, user_id)
+        if not assistant:
+            raise ValueError(f"Assistant {assistant_id} not found")
+
+        try:
+            # Delete related records first
+            # 1. Delete usage metrics
+            self.supabase.table("lacl_usage_metrics").delete().eq("assistant_id", str(assistant_id)).execute()
+            
+            # 2. Delete chat messages from all sessions for this assistant
+            sessions_result = (
+                self.supabase.table("lacl_chat_sessions")
+                .select("id")
+                .eq("assistant_id", str(assistant_id))
+                .execute()
+            )
+            if sessions_result.data:
+                session_ids = [session["id"] for session in sessions_result.data]
+                self.supabase.table("lacl_chat_messages").delete().in_("session_id", session_ids).execute()
+            
+            # 3. Delete chat sessions
+            self.supabase.table("lacl_chat_sessions").delete().eq("assistant_id", str(assistant_id)).execute()
+            
+            # Finally delete the assistant
+            self.supabase.table("lacl_assistants").delete().eq("id", str(assistant_id)).execute()
+            
+            return True
+        except Exception as e:
+            logger.error(f"Error deleting assistant {assistant_id}: {str(e)}")
+            raise
 
     async def get_assistant_analytics(self, assistant_id: UUID, user_id: UUID) -> Dict:
         """Get analytics for an assistant.
