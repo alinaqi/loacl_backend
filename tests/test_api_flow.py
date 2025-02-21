@@ -428,18 +428,43 @@ def main() -> None:
         # Test message retrieval
         print("\n=== Testing Message Retrieval ===")
         
-        # Get all messages
+        # Get all messages first
+        print("\nRetrieving all messages across sessions...")
         all_messages = test_flow.get_all_messages()
-        print("\nAll Messages:", json.dumps(all_messages, indent=2))
+        print(f"\nFound {len(all_messages)} messages across all sessions")
+        print("\nSample messages:")
+        for msg in all_messages[:2]:  # Show first 2 messages
+            print(f"- {msg['role']}: {msg['content'][:100]}...")
         
-        # Get messages from the first session we find
+        # Then get messages from specific sessions
         if all_messages:
             first_message = all_messages[0]
             session_id = first_message["session_id"]
+            print(f"\nRetrieving messages for session {session_id}...")
             session_messages = test_flow.get_session_messages(session_id)
-            print(f"\nMessages for session {session_id}:", json.dumps(session_messages, indent=2))
+            print(f"\nFound {len(session_messages)} messages in session")
+            print("\nSample session messages:")
+            for msg in session_messages[:2]:  # Show first 2 messages
+                print(f"- {msg['role']}: {msg['content'][:100]}...")
+
+        # Verify message content
+        print("\nVerifying message content and order...")
+        if all_messages:
+            # Verify we have messages from our conversation
+            user_messages = [msg for msg in all_messages if msg["role"] == "user"]
+            print(f"\nFound {len(user_messages)} user messages")
+            
+            # Verify the last message matches our last conversation
+            if user_messages and conversations:
+                last_user_msg = user_messages[0]  # Messages are in desc order
+                last_conv = conversations[-1]
+                if last_user_msg["content"] == last_conv["user"]:
+                    print("\n✓ Last message content verified")
+                else:
+                    print("\n✗ Last message content mismatch")
 
         # Cleanup
+        print("\n=== Cleanup ===")
         test_flow.delete_assistant()
         print("\nTest flow completed successfully!")
 
