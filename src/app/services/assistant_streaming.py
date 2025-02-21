@@ -2,13 +2,18 @@
 
 import asyncio
 import json
+from datetime import datetime, timedelta
 from typing import Any, AsyncGenerator, Dict, Optional
 
+import jwt
 from openai import OpenAI
 from sse_starlette.sse import ServerSentEvent
+from supabase.lib.client_options import ClientOptions
 
+from app.core.config import get_settings
 from app.core.logger import logger
 from app.services.assistant import AssistantService
+from supabase import create_client
 
 
 class AssistantStreamingService:
@@ -27,6 +32,103 @@ class AssistantStreamingService:
         self.api_key = api_key
         self.openai_assistant_id = openai_assistant_id
         self.client = client or OpenAI(api_key=api_key)
+        
+        # Initialize Supabase with service role
+        settings = get_settings()
+        
+        # Create service role JWT
+        service_role_jwt = jwt.encode(
+            {
+                "role": "service_role",
+                "iss": "supabase",
+                "iat": datetime.utcnow(),
+                "exp": datetime.utcnow() + timedelta(days=1),
+            },
+            settings.SUPABASE_JWT_SECRET,
+            algorithm="HS256",
+        )
+
+        # Use service role key with proper JWT
+        options = ClientOptions(
+            headers={
+                "apiKey": settings.SUPABASE_SERVICE_ROLE_KEY,
+                "Authorization": f"Bearer {service_role_jwt}",
+            }
+        )
+        
+        self.supabase = create_client(
+            settings.SUPABASE_URL,
+            settings.SUPABASE_SERVICE_ROLE_KEY,
+            options=options
+        )
+
+    def _get_or_create_chat_session(
+        self,
+        thread_id: str,
+        assistant_id: str,
+        fingerprint: str = "default"
+    ) -> Dict[str, Any]:
+        """Get or create a chat session for the thread.
+
+        Args:
+            thread_id: OpenAI thread ID
+            assistant_id: Assistant ID
+            fingerprint: User fingerprint
+
+        Returns:
+            Chat session data
+        """
+        # Try to find existing session
+        result = (
+            self.supabase.table("lacl_chat_sessions")
+            .select("*")
+            .eq("metadata->>thread_id", thread_id)
+            .execute()
+        )
+        
+        if result.data:
+            return result.data[0]
+            
+        # Create new session
+        session_data = {
+            "assistant_id": assistant_id,
+            "fingerprint": fingerprint,
+            "metadata": {"thread_id": thread_id}
+        }
+        
+        result = self.supabase.table("lacl_chat_sessions").insert(session_data).execute()
+        return result.data[0]
+
+    def _save_message(
+        self,
+        session_id: str,
+        role: str,
+        content: str,
+        tokens_used: int = 0,
+        metadata: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """Save a message to the database.
+
+        Args:
+            session_id: Chat session ID
+            role: Message role (user/assistant)
+            content: Message content
+            tokens_used: Number of tokens used
+            metadata: Optional metadata
+
+        Returns:
+            Saved message data
+        """
+        message_data = {
+            "session_id": session_id,
+            "role": role,
+            "content": content,
+            "tokens_used": tokens_used,
+            "metadata": metadata or {}
+        }
+        
+        result = self.supabase.table("lacl_chat_messages").insert(message_data).execute()
+        return result.data[0]
 
     @classmethod
     async def create_for_assistant(
@@ -62,6 +164,8 @@ class AssistantStreamingService:
     async def stream_create_thread_and_run(
         self,
         messages: list,
+        assistant_id: str = None,
+        fingerprint: str = "default",
         instructions: Optional[str] = None,
         tools: Optional[list] = None,
     ) -> AsyncGenerator[ServerSentEvent, None]:
@@ -69,6 +173,8 @@ class AssistantStreamingService:
 
         Args:
             messages: Initial messages
+            assistant_id: Assistant ID for database
+            fingerprint: User fingerprint for database
             instructions: Optional override instructions
             tools: Optional tools to use
 
@@ -99,11 +205,32 @@ class AssistantStreamingService:
 
             # Create thread
             thread = self.client.beta.threads.create(messages=formatted_messages)
-            yield self._create_sse_event("thread.created", thread.model_dump())
+            thread_data = thread.model_dump()
+            yield self._create_sse_event("thread.created", thread_data)
+
+            # Save to database if assistant_id is provided
+            if assistant_id:
+                session = self._get_or_create_chat_session(
+                    thread_id=thread_data["id"],
+                    assistant_id=assistant_id,
+                    fingerprint=fingerprint
+                )
+                # Save initial messages
+                for msg in formatted_messages:
+                    self._save_message(
+                        session_id=session["id"],
+                        role=msg["role"],
+                        content=msg["content"],
+                        metadata={"message_id": msg.get("id")}
+                    )
 
             # Create and stream run
             async for event in self.stream_run(
-                thread.id, instructions=instructions, tools=tools
+                thread.id,
+                assistant_id=assistant_id,
+                fingerprint=fingerprint,
+                instructions=instructions,
+                tools=tools
             ):
                 yield event
 
@@ -114,6 +241,8 @@ class AssistantStreamingService:
     async def stream_run(
         self,
         thread_id: str,
+        assistant_id: Optional[str] = None,
+        fingerprint: str = "default",
         instructions: Optional[str] = None,
         tools: Optional[list] = None,
     ) -> AsyncGenerator[ServerSentEvent, None]:
@@ -121,6 +250,8 @@ class AssistantStreamingService:
 
         Args:
             thread_id: Thread ID
+            assistant_id: Assistant ID for database
+            fingerprint: User fingerprint for database
             instructions: Optional override instructions
             tools: Optional tools to use
 
@@ -133,6 +264,15 @@ class AssistantStreamingService:
 
             if not self.openai_assistant_id:
                 raise ValueError("OpenAI Assistant ID is required")
+
+            # Get or create session if assistant_id is provided
+            session = None
+            if assistant_id:
+                session = self._get_or_create_chat_session(
+                    thread_id=thread_id,
+                    assistant_id=assistant_id,
+                    fingerprint=fingerprint
+                )
 
             # Check for active runs
             runs = self.client.beta.threads.runs.list(thread_id=thread_id)
@@ -147,9 +287,7 @@ class AssistantStreamingService:
                     yield self._create_sse_event(
                         f"thread.run.{active_run.status}", active_run.model_dump()
                     )
-                    await asyncio.sleep(
-                        1
-                    )  # Add small delay to prevent too frequent polling
+                    await asyncio.sleep(1)
                     active_run = self.client.beta.threads.runs.retrieve(
                         thread_id=thread_id, run_id=active_run.id
                     )
@@ -160,7 +298,7 @@ class AssistantStreamingService:
                 assistant_id=self.openai_assistant_id,
                 instructions=instructions,
                 tools=tools or [],
-                stream=True,  # Enable streaming
+                stream=True,
             )
             yield self._create_sse_event("thread.run.created", run.model_dump())
 
@@ -184,9 +322,10 @@ class AssistantStreamingService:
                 )
 
                 for message in messages.data:
+                    message_data = message.model_dump()
                     # Stream message content
                     yield self._create_sse_event(
-                        "thread.message.created", message.model_dump()
+                        "thread.message.created", message_data
                     )
 
                     if message.content:
@@ -200,13 +339,20 @@ class AssistantStreamingService:
                                 },
                             )
 
+                            # Save message to database if we have session
+                            if session and content_part.get("type") == "text":
+                                self._save_message(
+                                    session_id=session["id"],
+                                    role=message_data["role"],
+                                    content=content_part["text"]["value"],
+                                    metadata={"message_id": message_data["id"]}
+                                )
+
                     yield self._create_sse_event(
-                        "thread.message.completed", message.model_dump()
+                        "thread.message.completed", message_data
                     )
 
-                await asyncio.sleep(
-                    1
-                )  # Add small delay to prevent too frequent polling
+                await asyncio.sleep(1)
 
         except Exception as e:
             logger.error(f"Error in stream_run: {str(e)}")
@@ -261,3 +407,57 @@ class AssistantStreamingService:
             event=event_type,
             retry=None,
         )
+
+    async def delete_chat_session(
+        self,
+        session_id: str,
+        fingerprint: str,
+    ) -> bool:
+        """Delete a chat session and all its messages.
+
+        Args:
+            session_id: Chat session ID
+            fingerprint: User fingerprint
+
+        Returns:
+            True if deleted successfully
+
+        Raises:
+            ValueError: If session not found or doesn't belong to user
+        """
+        # Verify session belongs to user
+        session = (
+            self.supabase.table("lacl_chat_sessions")
+            .select("*")
+            .eq("id", session_id)
+            .eq("fingerprint", fingerprint)
+            .execute()
+        )
+        
+        if not session.data:
+            raise ValueError(f"Chat session {session_id} not found")
+            
+        try:
+            # Delete usage metrics first
+            self.supabase.table("lacl_usage_metrics").delete().eq("session_id", session_id).execute()
+            
+            # Delete all messages
+            self.supabase.table("lacl_chat_messages").delete().eq("session_id", session_id).execute()
+            
+            # Then delete the session
+            self.supabase.table("lacl_chat_sessions").delete().eq("id", session_id).execute()
+            
+            # Delete the OpenAI thread if it exists
+            if session.data[0].get("metadata", {}).get("thread_id"):
+                thread_id = session.data[0]["metadata"]["thread_id"]
+                try:
+                    self.client.beta.threads.delete(thread_id=thread_id)
+                except Exception as e:
+                    logger.error(f"Error deleting OpenAI thread {thread_id}: {str(e)}")
+                    # Continue even if OpenAI thread deletion fails
+                    pass
+            
+            return True
+        except Exception as e:
+            logger.error(f"Error deleting chat session {session_id}: {str(e)}")
+            raise

@@ -435,5 +435,59 @@ class AssistantCommunicationService:
         
         return result.data
 
+    async def delete_chat_session(
+        self,
+        session_id: str,
+        fingerprint: str,
+    ) -> bool:
+        """Delete a chat session and all its messages.
+
+        Args:
+            session_id: Chat session ID
+            fingerprint: User fingerprint
+
+        Returns:
+            True if deleted successfully
+
+        Raises:
+            ValueError: If session not found or doesn't belong to user
+        """
+        # Verify session belongs to user
+        session = (
+            self.supabase.table("lacl_chat_sessions")
+            .select("*")
+            .eq("id", session_id)
+            .eq("fingerprint", fingerprint)
+            .execute()
+        )
+        
+        if not session.data:
+            raise ValueError(f"Chat session {session_id} not found")
+            
+        try:
+            # Delete usage metrics first
+            self.supabase.table("lacl_usage_metrics").delete().eq("session_id", session_id).execute()
+            
+            # Delete all messages
+            self.supabase.table("lacl_chat_messages").delete().eq("session_id", session_id).execute()
+            
+            # Then delete the session
+            self.supabase.table("lacl_chat_sessions").delete().eq("id", session_id).execute()
+            
+            # Delete the OpenAI thread if it exists
+            if session.data[0].get("metadata", {}).get("thread_id"):
+                thread_id = session.data[0]["metadata"]["thread_id"]
+                try:
+                    self.client.beta.threads.delete(thread_id=thread_id)
+                except Exception as e:
+                    logger.error(f"Error deleting OpenAI thread {thread_id}: {str(e)}")
+                    # Continue even if OpenAI thread deletion fails
+                    pass
+            
+            return True
+        except Exception as e:
+            logger.error(f"Error deleting chat session {session_id}: {str(e)}")
+            raise
+
 
 # Don't create a global instance as we need different instances for different API keys

@@ -286,6 +286,31 @@ class StreamingAPITestFlow:
 
         await self._stream_request(endpoint, data, params)
 
+    def delete_chat_session(self) -> None:
+        """Delete the current chat session."""
+        if self.thread_id:
+            print("\nDeleting chat session...")
+            # Get the session ID from the thread ID
+            session_result = self._make_request(
+                "GET",
+                "/api/v1/assistant-communication/chat-sessions/messages",
+                params={"assistant_id": self.local_assistant_id}
+            )
+            
+            if session_result and len(session_result) > 0:
+                session_id = session_result[0]["session_id"]
+                try:
+                    self._make_request(
+                        "DELETE",
+                        f"/api/v1/assistant-communication/chat-sessions/{session_id}",
+                        params={"assistant_id": self.local_assistant_id}
+                    )
+                    print("Chat session deleted successfully")
+                except Exception as e:
+                    print(f"Error deleting chat session: {e}")
+            else:
+                print("No chat session found to delete")
+
     def delete_assistant(self) -> Dict[str, Any]:
         """Delete the test assistant.
 
@@ -355,6 +380,9 @@ async def main() -> None:
             print("\n" + "=" * 50)
 
         # Cleanup
+        print("\n=== Cleanup ===")
+        if test_flow.thread_id:
+            test_flow.delete_chat_session()
         test_flow.delete_assistant()
         print("\nTest flow completed successfully!")
 
