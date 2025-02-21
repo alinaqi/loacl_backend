@@ -325,3 +325,38 @@ async def get_messages_from_sessions(
         limit=limit,
         offset=offset
     )
+
+
+@router.delete("/chat-sessions/{session_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_chat_session(
+    session_id: str,
+    assistant_id: str,
+    current_user: User = Depends(deps.get_current_user),
+) -> None:
+    """Delete a chat session and all its messages.
+
+    Args:
+        session_id: Chat session ID
+        assistant_id: Assistant ID
+        current_user: Current user
+
+    Raises:
+        HTTPException: If session not found or deletion fails
+    """
+    # Get service with assistant-specific API key
+    service = await get_assistant_service(assistant_id, current_user)
+    try:
+        await service.delete_chat_session(
+            session_id=session_id,
+            fingerprint=str(current_user.id)
+        )
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(e)
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e)
+        )

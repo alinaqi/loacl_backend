@@ -68,7 +68,7 @@ async def create_thread_and_run_stream(
     formatted_messages = []
     for msg in messages:
         formatted_msg = {
-            "role": "user",  # Default to user role if not specified
+            "role": msg.role,  # Use the role from the message
             "content": msg.content,
         }
         if msg.file_ids:
@@ -78,6 +78,8 @@ async def create_thread_and_run_stream(
     return EventSourceResponse(
         service.stream_create_thread_and_run(
             messages=formatted_messages,
+            assistant_id=assistant_id,  # Pass assistant_id
+            fingerprint=str(current_user.id),  # Use user ID as fingerprint
             instructions=instructions,
             tools=tools,
         )
@@ -104,6 +106,8 @@ async def create_run_stream(
     return EventSourceResponse(
         service.stream_run(
             thread_id=thread_id,
+            assistant_id=run_data.assistant_id,  # Pass assistant_id
+            fingerprint=str(current_user.id),  # Use user ID as fingerprint
             instructions=run_data.instructions,
             tools=run_data.tools,
         )

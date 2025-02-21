@@ -250,7 +250,7 @@ class APITestFlow:
         Returns:
             List of chat messages
         """
-        print("\nGetting all messages across sessions")
+        print("\nRetrieving all messages across sessions...")
         return self._make_request(
             "GET",
             "/api/v1/assistant-communication/chat-sessions/messages",
@@ -332,6 +332,20 @@ class APITestFlow:
             if msg["role"] == "assistant":
                 return msg
         return None
+
+    def delete_chat_session(self, session_id: str) -> None:
+        """Delete a chat session.
+
+        Args:
+            session_id: Chat session ID
+        """
+        print(f"\nDeleting chat session: {session_id}")
+        self._make_request(
+            "DELETE",
+            f"/api/v1/assistant-communication/chat-sessions/{session_id}",
+            params={"assistant_id": self.local_assistant_id}
+        )
+        print("Chat session deleted successfully")
 
     def delete_assistant(self) -> Dict[str, Any]:
         """Delete the test assistant.
@@ -446,6 +460,20 @@ def main() -> None:
             print("\nSample session messages:")
             for msg in session_messages[:2]:  # Show first 2 messages
                 print(f"- {msg['role']}: {msg['content'][:100]}...")
+
+            # Test session deletion
+            print("\n=== Testing Chat Session Deletion ===")
+            test_flow.delete_chat_session(session_id)
+            
+            # Verify deletion by trying to get messages again
+            try:
+                test_flow.get_session_messages(session_id)
+                print("ERROR: Session still exists after deletion!")
+            except requests.exceptions.HTTPError as e:
+                if e.response.status_code == 404:
+                    print("✓ Session successfully deleted (404 Not Found)")
+                else:
+                    raise
 
         # Verify message content
         print("\nVerifying message content and order...")
