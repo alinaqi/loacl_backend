@@ -228,6 +228,35 @@ class APITestFlow:
             "GET", f"/api/v1/assistants/{self.local_assistant_id}"
         )
 
+    def get_session_messages(self, session_id: str) -> List[Dict[str, Any]]:
+        """Get messages from a specific chat session.
+
+        Args:
+            session_id: Chat session ID
+
+        Returns:
+            List of chat messages
+        """
+        print(f"\nGetting messages for session: {session_id}")
+        return self._make_request(
+            "GET",
+            f"/api/v1/assistant-communication/chat-sessions/{session_id}/messages",
+            params={"assistant_id": self.local_assistant_id},
+        )
+
+    def get_all_messages(self) -> List[Dict[str, Any]]:
+        """Get all messages across sessions.
+
+        Returns:
+            List of chat messages
+        """
+        print("\nGetting all messages across sessions")
+        return self._make_request(
+            "GET",
+            "/api/v1/assistant-communication/chat-sessions/messages",
+            params={"assistant_id": self.local_assistant_id},
+        )
+
     def send_message(self, message: str) -> Optional[Dict[str, Any]]:
         """Send a message to the assistant and get the response.
 
@@ -252,7 +281,7 @@ class APITestFlow:
 
         # Add message to thread
         message_data = {"content": message}
-        _ = self._make_request(
+        message_response = self._make_request(
             "POST",
             f"/api/v1/assistant-communication/threads/{self.thread_id}/messages",
             data=message_data,
@@ -395,6 +424,20 @@ def main() -> None:
                 print("\nNo response from assistant")
 
             print("\n" + "=" * 50)
+
+        # Test message retrieval
+        print("\n=== Testing Message Retrieval ===")
+        
+        # Get all messages
+        all_messages = test_flow.get_all_messages()
+        print("\nAll Messages:", json.dumps(all_messages, indent=2))
+        
+        # Get messages from the first session we find
+        if all_messages:
+            first_message = all_messages[0]
+            session_id = first_message["session_id"]
+            session_messages = test_flow.get_session_messages(session_id)
+            print(f"\nMessages for session {session_id}:", json.dumps(session_messages, indent=2))
 
         # Cleanup
         test_flow.delete_assistant()

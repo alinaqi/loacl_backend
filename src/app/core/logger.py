@@ -9,9 +9,7 @@ import sys
 from typing import Any, Dict
 
 # Configure logging format
-LOG_FORMAT: str = (
-    "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-)
+LOG_FORMAT: str = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 DATE_FORMAT: str = "%Y-%m-%d %H:%M:%S"
 
 # Configure logging settings
@@ -54,4 +52,4 @@ logging.config.dictConfig(LOGGING_CONFIG)
 logger = logging.getLogger("app")
 
 # Set log level based on environment (can be configured via environment variable)
-logger.setLevel(logging.DEBUG)  # Default to DEBUG, can be overridden by environment 
+logger.setLevel(logging.DEBUG)  # Default to DEBUG, can be overridden by environment

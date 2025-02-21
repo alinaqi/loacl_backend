@@ -3,7 +3,7 @@
 from typing import List
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Query
 
 from app.api import deps
 from app.schemas.assistant_communication import (
@@ -14,6 +14,8 @@ from app.schemas.assistant_communication import (
     Thread,
     ThreadCreate,
     ToolOutput,
+    ChatSession,
+    ChatMessage,
 )
 from app.schemas.user import User
 from app.services.assistant import AssistantService
@@ -26,7 +28,7 @@ async def get_assistant_service(
     assistant_id: str, current_user: User
 ) -> AssistantCommunicationService:
     """Get AssistantCommunicationService instance for a specific assistant.
-    
+
     Args:
         assistant_id: Assistant ID (UUID)
         current_user: Current user
@@ -43,33 +45,32 @@ async def get_assistant_service(
         assistant = await assistant_service.get_assistant(
             UUID(assistant_id), UUID(str(current_user.id))
         )
-        
+
         if not assistant:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Assistant {assistant_id} not found"
+                detail=f"Assistant {assistant_id} not found",
             )
-            
+
         if not assistant.get("assistant_id"):
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"OpenAI Assistant ID not found for assistant {assistant_id}"
+                detail=f"OpenAI Assistant ID not found for assistant {assistant_id}",
             )
-            
+
         return await AssistantCommunicationService.create_for_assistant(
             assistant_id=assistant_id,
             user_id=current_user.id,
-            api_key=assistant.get("api_key")
+            api_key=assistant.get("api_key"),
         )
     except ValueError as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Invalid assistant ID format: {str(e)}"
+            detail=f"Invalid assistant ID format: {str(e)}",
         )
     except Exception as e:
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=str(e)
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
         )
 
 
@@ -80,7 +81,7 @@ async def create_thread(
     current_user: User = Depends(deps.get_current_user),
 ) -> Thread:
     """Create a new thread.
-    
+
     Args:
         thread_data: Thread creation data
         assistant_id: Assistant ID
@@ -99,11 +100,7 @@ async def create_thread(
         # Create thread with messages
         thread = service.create_thread(
             messages=[
-                {
-                    "role": "user",
-                    "content": msg.content,
-                    "file_ids": msg.file_ids or []
-                }
+                {"role": "user", "content": msg.content, "file_ids": msg.file_ids or []}
                 for msg in (thread_data.messages or [])
             ]
         )
@@ -123,7 +120,7 @@ async def add_message(
     current_user: User = Depends(deps.get_current_user),
 ) -> Message:
     """Add a message to a thread.
-    
+
     Args:
         thread_id: Thread ID
         message: Message to add
@@ -138,7 +135,9 @@ async def add_message(
     result = service.add_message_to_thread(
         thread_id=thread_id,
         content=message.content,
-        file_ids=message.file_ids
+        file_ids=message.file_ids,
+        assistant_id=assistant_id,
+        fingerprint=str(current_user.id)  # Use user ID as fingerprint for authenticated users
     )
     return Message(**result)
 
@@ -150,7 +149,7 @@ async def list_messages(
     current_user: User = Depends(deps.get_current_user),
 ) -> List[Message]:
     """List messages in a thread.
-    
+
     Args:
         thread_id: Thread ID
         assistant_id: Assistant ID
@@ -172,7 +171,7 @@ async def create_run(
     current_user: User = Depends(deps.get_current_user),
 ) -> Run:
     """Create a run for a thread.
-    
+
     Args:
         thread_id: Thread ID
         run_data: Run creation data
@@ -199,7 +198,7 @@ async def get_run_status(
     current_user: User = Depends(deps.get_current_user),
 ) -> Run:
     """Get the status of a run.
-    
+
     Args:
         thread_id: Thread ID
         run_id: Run ID
@@ -224,7 +223,7 @@ async def submit_tool_outputs(
     current_user: User = Depends(deps.get_current_user),
 ) -> Run:
     """Submit tool outputs for a run.
-    
+
     Args:
         thread_id: Thread ID
         run_id: Run ID
@@ -239,9 +238,7 @@ async def submit_tool_outputs(
     service = await get_assistant_service(assistant_id, current_user)
     outputs = [output.dict() for output in tool_outputs]
     run = service.submit_tool_outputs(
-        thread_id=thread_id,
-        run_id=run_id,
-        tool_outputs=outputs
+        thread_id=thread_id, run_id=run_id, tool_outputs=outputs
     )
     return Run(**run)
 
@@ -254,7 +251,7 @@ async def cancel_run(
     current_user: User = Depends(deps.get_current_user),
 ) -> Run:
     """Cancel a run.
-    
+
     Args:
         thread_id: Thread ID
         run_id: Run ID
@@ -268,3 +265,63 @@ async def cancel_run(
     service = await get_assistant_service(assistant_id, current_user)
     run = service.cancel_run(thread_id=thread_id, run_id=run_id)
     return Run(**run)
+
+
+@router.get("/chat-sessions/{session_id}/messages", response_model=List[ChatMessage])
+async def get_session_messages(
+    session_id: str,
+    assistant_id: str,
+    current_user: User = Depends(deps.get_current_user),
+    limit: int = Query(50, gt=0, le=100),
+    offset: int = Query(0, ge=0),
+) -> List[ChatMessage]:
+    """Get messages from a specific chat session.
+
+    Args:
+        session_id: Chat session ID
+        assistant_id: Assistant ID
+        current_user: Current user
+        limit: Maximum number of messages to return
+        offset: Number of messages to skip
+
+    Returns:
+        List of chat messages
+    """
+    # Get service with assistant-specific API key
+    service = await get_assistant_service(assistant_id, current_user)
+    return service.get_session_messages(
+        session_id=session_id,
+        fingerprint=str(current_user.id),
+        limit=limit,
+        offset=offset
+    )
+
+
+@router.get("/chat-sessions/messages", response_model=List[ChatMessage])
+async def get_messages_from_sessions(
+    assistant_id: str,
+    current_user: User = Depends(deps.get_current_user),
+    session_ids: List[str] = Query(None),
+    limit: int = Query(50, gt=0, le=100),
+    offset: int = Query(0, ge=0),
+) -> List[ChatMessage]:
+    """Get messages from multiple chat sessions.
+
+    Args:
+        assistant_id: Assistant ID
+        current_user: Current user
+        session_ids: Optional list of session IDs to filter by
+        limit: Maximum number of messages to return
+        offset: Number of messages to skip
+
+    Returns:
+        List of chat messages
+    """
+    # Get service with assistant-specific API key
+    service = await get_assistant_service(assistant_id, current_user)
+    return service.get_messages_from_sessions(
+        fingerprint=str(current_user.id),
+        session_ids=session_ids,
+        limit=limit,
+        offset=offset
+    )

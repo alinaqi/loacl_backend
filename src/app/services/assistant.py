@@ -40,9 +40,7 @@ class AssistantService:
         )
 
         self.supabase = create_client(
-            settings.SUPABASE_URL,
-            settings.SUPABASE_SERVICE_ROLE_KEY,
-            options=options
+            settings.SUPABASE_URL, settings.SUPABASE_SERVICE_ROLE_KEY, options=options
         )
 
     async def create_assistant(self, assistant_data: Dict, user_id: UUID) -> Dict:
@@ -111,10 +109,10 @@ class AssistantService:
             .eq("user_id", str(user_id))
             .execute()
         )
-        
+
         if not result.data:
             return None
-            
+
         return result.data[0]
 
     async def update_assistant(
@@ -309,9 +307,7 @@ class AssistantService:
                 data["assistant_id"] = str(assistant_id)
                 data["created_at"] = data["updated_at"]
                 result = (
-                    self.supabase.table("lacl_embed_settings")
-                    .insert(data)
-                    .execute()
+                    self.supabase.table("lacl_embed_settings").insert(data).execute()
                 )
 
             return bool(result.data)

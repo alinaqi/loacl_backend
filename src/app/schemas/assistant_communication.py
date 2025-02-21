@@ -47,14 +47,12 @@ class Thread(BaseModel):
 class RunCreate(BaseModel):
     """Schema for creating a new run"""
 
-    assistant_id: str = Field(
-        ..., description="The ID of the assistant to use for this run"
-    )
+    assistant_id: str = Field(..., description="Assistant ID to use for the run")
     instructions: Optional[str] = Field(
-        default=None, description="Override the assistant's instructions for this run"
+        default=None, description="Override instructions for this run"
     )
     tools: Optional[List[Dict[str, Any]]] = Field(
-        default=None, description="Override the assistant's tools for this run"
+        default=None, description="Tools to use for this run"
     )
 
 
@@ -74,7 +72,30 @@ class Run(BaseModel):
 
 
 class ToolOutput(BaseModel):
-    """Schema for submitting tool outputs"""
+    """Schema for tool output"""
 
-    tool_call_id: str = Field(..., description="The ID of the tool call to respond to")
-    output: str = Field(..., description="The output of the tool call")
+    tool_call_id: str = Field(..., description="ID of the tool call")
+    output: str = Field(..., description="Output from the tool")
+
+
+class ChatSession(BaseModel):
+    """Schema for a chat session"""
+
+    id: UUID
+    assistant_id: UUID
+    fingerprint: str
+    created_at: str
+    last_active_at: str
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+
+
+class ChatMessage(BaseModel):
+    """Schema for a chat message"""
+
+    id: UUID
+    session_id: UUID
+    role: str
+    content: str
+    created_at: str
+    tokens_used: int = 0
+    metadata: Dict[str, Any] = Field(default_factory=dict)
