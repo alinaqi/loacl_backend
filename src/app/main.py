@@ -4,6 +4,8 @@ Sets up FastAPI with all configurations and routers.
 """
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.openapi.models import SecurityScheme
+from fastapi.security import OAuth2PasswordBearer
 
 from app.core.settings import settings
 from app.api.v1.api import api_router
@@ -13,7 +15,8 @@ def create_application() -> FastAPI:
     app = FastAPI(
         title="LOACL API",
         description="API for LOACL - Local OpenAI Assistant Chat Library",
-        version="0.1.0"
+        version="0.1.0",
+        swagger_ui_parameters={"persistAuthorization": True}
     )
 
     # Configure CORS
