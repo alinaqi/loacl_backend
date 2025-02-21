@@ -25,8 +25,22 @@ class Settings(BaseSettings):
 
     @validator("BACKEND_CORS_ORIGINS", pre=True)
     def assemble_cors_origins(cls, v: Union[str, List[str]]) -> Union[List[str], str]:
-        if isinstance(v, str) and not v.startswith("["):
-            return [i.strip() for i in v.split(",")]
+        """Validate and assemble CORS origins.
+        
+        Args:
+            v: CORS origins value
+            
+        Returns:
+            List of origins or "*" for all origins
+            
+        Raises:
+            ValueError: If invalid format
+        """
+        if isinstance(v, str):
+            if v == "*":
+                return ["*"]  # Allow all origins
+            if not v.startswith("["):
+                return [i.strip() for i in v.split(",")]
         elif isinstance(v, (list, str)):
             return v
         raise ValueError(v)
