@@ -5,16 +5,18 @@ Sets up FastAPI with all configurations and routers.
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.core.config import settings
+from app.core.settings import settings
+from app.api.v1.api import api_router
 
 def create_application() -> FastAPI:
     """Create and configure the FastAPI application."""
     app = FastAPI(
-        title=settings.PROJECT_NAME,
-        openapi_url=f"{settings.API_V1_STR}/openapi.json"
+        title="LOACL API",
+        description="API for LOACL - Local OpenAI Assistant Chat Library",
+        version="0.1.0"
     )
 
-    # Set up CORS middleware
+    # Configure CORS
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.BACKEND_CORS_ORIGINS,
@@ -23,11 +25,14 @@ def create_application() -> FastAPI:
         allow_headers=["*"],
     )
 
+    # Include API router
+    app.include_router(api_router, prefix=settings.API_V1_STR)
+
     # Health check endpoint
     @app.get("/health")
     async def health_check():
-        """Basic health check endpoint."""
-        return {"status": "healthy"}
+        """Health check endpoint."""
+        return {"status": "ok", "message": "Service is running"}
 
     return app
 
