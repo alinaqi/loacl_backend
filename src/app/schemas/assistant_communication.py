@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 class MessageCreate(BaseModel):
     """Schema for creating a new message in a thread"""
 
+    role: str = "user"  # Default to user role
     content: str = Field(..., description="The content of the message")
     file_ids: Optional[List[str]] = Field(
         default=None, description="List of file IDs to attach to the message"

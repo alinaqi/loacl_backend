@@ -1,5 +1,10 @@
 from fastapi import APIRouter
-from app.api.v1.endpoints import auth, assistants, assistant_communication
+from app.api.v1.endpoints import (
+    auth,
+    assistants,
+    assistant_communication,
+    assistant_streaming,
+)
 
 api_router = APIRouter()
 
@@ -16,4 +21,9 @@ api_router.include_router(
     assistant_communication.router,
     prefix="/assistant-communication",
     tags=["assistant-communication"]
+)
+api_router.include_router(
+    assistant_streaming.router,
+    prefix="/assistant-streaming",
+    tags=["assistant-streaming"]
 ) 
