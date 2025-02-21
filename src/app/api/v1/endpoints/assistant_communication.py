@@ -1,4 +1,7 @@
+"""Assistant communication endpoints."""
+
 from typing import List
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
@@ -22,14 +25,52 @@ router = APIRouter()
 async def get_assistant_service(
     assistant_id: str, current_user: User
 ) -> AssistantCommunicationService:
-    """Get AssistantCommunicationService instance for a specific assistant"""
-    assistant_service = AssistantService()
-    assistant = await assistant_service.get_assistant(assistant_id, current_user.id)
-    if not assistant:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Assistant not found"
+    """Get AssistantCommunicationService instance for a specific assistant.
+    
+    Args:
+        assistant_id: Assistant ID (UUID)
+        current_user: Current user
+
+    Returns:
+        AssistantCommunicationService instance
+
+    Raises:
+        HTTPException: If assistant is not found
+    """
+    try:
+        assistant_service = AssistantService()
+        # Convert string ID to UUID
+        assistant = await assistant_service.get_assistant(
+            UUID(assistant_id), UUID(str(current_user.id))
         )
-    return AssistantCommunicationService.create_for_assistant(assistant)
+        
+        if not assistant:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Assistant {assistant_id} not found"
+            )
+            
+        if not assistant.get("assistant_id"):
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"OpenAI Assistant ID not found for assistant {assistant_id}"
+            )
+            
+        return await AssistantCommunicationService.create_for_assistant(
+            assistant_id=assistant_id,
+            user_id=current_user.id,
+            api_key=assistant.get("api_key")
+        )
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid assistant ID format: {str(e)}"
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e)
+        )
 
 
 @router.post("/threads", response_model=Thread)
@@ -38,23 +79,34 @@ async def create_thread(
     assistant_id: str,
     current_user: User = Depends(deps.get_current_user),
 ) -> Thread:
-    """Create a new thread"""
+    """Create a new thread.
+    
+    Args:
+        thread_data: Thread creation data
+        assistant_id: Assistant ID
+        current_user: Current user
+
+    Returns:
+        Created thread
+
+    Raises:
+        HTTPException: If thread creation fails
+    """
     try:
         # Get service with assistant-specific API key
         service = await get_assistant_service(assistant_id, current_user)
 
-        # First create an empty thread
-        thread = await service.create_thread()
-
-        # If messages were provided, add them to the thread
-        if thread_data.messages:
-            for message in thread_data.messages:
-                await service.add_message(
-                    thread_id=thread["id"],
-                    content=message.content,
-                    file_ids=message.file_ids,
-                )
-
+        # Create thread with messages
+        thread = service.create_thread(
+            messages=[
+                {
+                    "role": "user",
+                    "content": msg.content,
+                    "file_ids": msg.file_ids or []
+                }
+                for msg in (thread_data.messages or [])
+            ]
+        )
         return Thread(**thread)
     except Exception as e:
         print(f"Error creating thread: {str(e)}")
@@ -70,11 +122,23 @@ async def add_message(
     assistant_id: str,
     current_user: User = Depends(deps.get_current_user),
 ) -> Message:
-    """Add a message to a thread"""
+    """Add a message to a thread.
+    
+    Args:
+        thread_id: Thread ID
+        message: Message to add
+        assistant_id: Assistant ID
+        current_user: Current user
+
+    Returns:
+        Created message
+    """
     # Get service with assistant-specific API key
     service = await get_assistant_service(assistant_id, current_user)
-    result = await service.add_message(
-        thread_id=thread_id, content=message.content, file_ids=message.file_ids
+    result = service.add_message_to_thread(
+        thread_id=thread_id,
+        content=message.content,
+        file_ids=message.file_ids
     )
     return Message(**result)
 
@@ -83,13 +147,21 @@ async def add_message(
 async def list_messages(
     thread_id: str,
     assistant_id: str,
-    limit: int = 100,
     current_user: User = Depends(deps.get_current_user),
 ) -> List[Message]:
-    """List messages in a thread"""
+    """List messages in a thread.
+    
+    Args:
+        thread_id: Thread ID
+        assistant_id: Assistant ID
+        current_user: Current user
+
+    Returns:
+        List of messages
+    """
     # Get service with assistant-specific API key
     service = await get_assistant_service(assistant_id, current_user)
-    messages = await service.get_messages(thread_id=thread_id, limit=limit)
+    messages = service.get_messages(thread_id=thread_id)
     return [Message(**msg) for msg in messages]
 
 
@@ -99,12 +171,20 @@ async def create_run(
     run_data: RunCreate,
     current_user: User = Depends(deps.get_current_user),
 ) -> Run:
-    """Create a run for a thread"""
+    """Create a run for a thread.
+    
+    Args:
+        thread_id: Thread ID
+        run_data: Run creation data
+        current_user: Current user
+
+    Returns:
+        Created run
+    """
     # Get service with assistant-specific API key
     service = await get_assistant_service(run_data.assistant_id, current_user)
-    run = await service.run_assistant(
+    run = service.run_assistant(
         thread_id=thread_id,
-        assistant_id=run_data.assistant_id,
         instructions=run_data.instructions,
         tools=run_data.tools,
     )
@@ -118,10 +198,20 @@ async def get_run_status(
     assistant_id: str,
     current_user: User = Depends(deps.get_current_user),
 ) -> Run:
-    """Get the status of a run"""
+    """Get the status of a run.
+    
+    Args:
+        thread_id: Thread ID
+        run_id: Run ID
+        assistant_id: Assistant ID
+        current_user: Current user
+
+    Returns:
+        Run status
+    """
     # Get service with assistant-specific API key
     service = await get_assistant_service(assistant_id, current_user)
-    run = await service.get_run(thread_id=thread_id, run_id=run_id)
+    run = service.get_run(thread_id=thread_id, run_id=run_id)
     return Run(**run)
 
 
@@ -133,12 +223,25 @@ async def submit_tool_outputs(
     assistant_id: str,
     current_user: User = Depends(deps.get_current_user),
 ) -> Run:
-    """Submit tool outputs for a run"""
+    """Submit tool outputs for a run.
+    
+    Args:
+        thread_id: Thread ID
+        run_id: Run ID
+        tool_outputs: Tool outputs to submit
+        assistant_id: Assistant ID
+        current_user: Current user
+
+    Returns:
+        Updated run
+    """
     # Get service with assistant-specific API key
     service = await get_assistant_service(assistant_id, current_user)
     outputs = [output.dict() for output in tool_outputs]
-    run = await service.submit_tool_outputs(
-        thread_id=thread_id, run_id=run_id, tool_outputs=outputs
+    run = service.submit_tool_outputs(
+        thread_id=thread_id,
+        run_id=run_id,
+        tool_outputs=outputs
     )
     return Run(**run)
 
@@ -150,8 +253,18 @@ async def cancel_run(
     assistant_id: str,
     current_user: User = Depends(deps.get_current_user),
 ) -> Run:
-    """Cancel a run"""
+    """Cancel a run.
+    
+    Args:
+        thread_id: Thread ID
+        run_id: Run ID
+        assistant_id: Assistant ID
+        current_user: Current user
+
+    Returns:
+        Cancelled run
+    """
     # Get service with assistant-specific API key
     service = await get_assistant_service(assistant_id, current_user)
-    run = await service.cancel_run(thread_id=thread_id, run_id=run_id)
+    run = service.cancel_run(thread_id=thread_id, run_id=run_id)
     return Run(**run)

@@ -1,88 +1,223 @@
+"""Service for handling assistant communication with OpenAI API.
+
+This module provides functionality for managing assistant communication,
+including thread and message management, run execution, and response handling.
+"""
+
 from typing import Any, Dict, List, Optional
+from uuid import UUID
 
 from openai import OpenAI
 
 from app.core.config import get_settings
+from app.core.logger import logger
+from app.services.assistant import AssistantService
 
 
 class AssistantCommunicationService:
-    def __init__(self, api_key: Optional[str] = None):
-        """Initialize OpenAI client"""
-        self.settings = get_settings()
-        self.api_key = api_key or self.settings.OPENAI_API_KEY
-        print(
-            f"Initializing OpenAI client with API key: {self.api_key[:10]}..."
-        )  # Debug print
-        self.client = OpenAI(api_key=self.api_key)
+    """Service for managing communication with OpenAI assistants."""
+
+    def __init__(
+        self,
+        api_key: str,
+        openai_assistant_id: str,
+        client: Optional[OpenAI] = None
+    ) -> None:
+        """Initialize the assistant communication service.
+
+        Args:
+            api_key: OpenAI API key
+            openai_assistant_id: OpenAI assistant ID
+            client: Optional pre-configured OpenAI client
+        """
+        self.api_key = api_key
+        self.openai_assistant_id = openai_assistant_id
+        self.client = client or OpenAI(api_key=api_key)
 
     @classmethod
-    def create_for_assistant(
-        cls, assistant_data: Dict
+    async def create_for_assistant(
+        cls,
+        assistant_id: str,
+        user_id: int,
+        api_key: Optional[str] = None
     ) -> "AssistantCommunicationService":
-        """Create service instance for a specific assistant"""
-        return cls(api_key=assistant_data.get("api_key"))
+        """Create a service instance for a specific assistant.
 
-    async def create_thread(self, messages: Optional[List[Dict]] = None) -> Dict:
-        """Create a new thread"""
-        try:
-            thread = self.client.beta.threads.create(messages=messages)
-            print(f"Thread created: {thread}")  # Debug print
-            return thread.model_dump()
-        except Exception as e:
-            print(f"Error creating thread: {str(e)}")  # Debug print
-            raise
+        Args:
+            assistant_id: Local assistant ID
+            user_id: User ID
+            api_key: Optional OpenAI API key
 
-    async def add_message(
-        self, thread_id: str, content: str, file_ids: Optional[List[str]] = None
-    ) -> Dict:
-        """Add a message to a thread"""
-        message_params = {"thread_id": thread_id, "role": "user", "content": content}
-        if file_ids:
-            message_params["file_ids"] = file_ids
+        Returns:
+            AssistantCommunicationService instance
 
-        message = self.client.beta.threads.messages.create(**message_params)
-        return message.model_dump()
+        Raises:
+            ValueError: If assistant is not found
+        """
+        logger.debug(
+            f"Creating communication service for assistant {assistant_id}"
+        )
+        assistant_service = AssistantService()
+        # Convert string IDs to UUID objects
+        assistant = await assistant_service.get_assistant(
+            UUID(assistant_id), UUID(str(user_id))
+        )
+        
+        if not assistant:
+            raise ValueError(f"Assistant {assistant_id} not found")
+            
+        if not assistant.get("assistant_id"):
+            raise ValueError(
+                f"OpenAI Assistant ID not found for assistant {assistant_id}"
+            )
+            
+        settings = get_settings()
+        return cls(
+            api_key=api_key or settings.OPENAI_API_KEY,
+            openai_assistant_id=assistant["assistant_id"]
+        )
 
-    async def run_assistant(
+    def create_thread(
+        self, messages: List[Dict[str, Any]]
+    ) -> Dict[str, Any]:
+        """Create a new thread with optional initial messages.
+
+        Args:
+            messages: List of initial messages
+
+        Returns:
+            Created thread data
+        """
+        thread = self.client.beta.threads.create(messages=messages)
+        return thread.model_dump()
+
+    def add_message_to_thread(
         self,
         thread_id: str,
-        assistant_id: str,
+        content: str,
+        file_ids: Optional[List[str]] = None
+    ) -> Dict[str, Any]:
+        """Add a message to an existing thread.
+
+        Args:
+            thread_id: Thread ID
+            content: Message content
+            file_ids: Optional list of file IDs
+
+        Returns:
+            Created message data
+        """
+        params = {
+            "thread_id": thread_id,
+            "role": "user",
+            "content": content,
+        }
+        
+        if file_ids is not None:
+            params["file_ids"] = file_ids
+            
+        message = self.client.beta.threads.messages.create(**params)
+        return message.model_dump()
+
+    def run_assistant(
+        self,
+        thread_id: str,
         instructions: Optional[str] = None,
-        tools: Optional[List[Dict]] = None,
-    ) -> Dict:
-        """Run the assistant on a thread"""
+        tools: Optional[List[Dict[str, Any]]] = None
+    ) -> Dict[str, Any]:
+        """Run the assistant on a thread.
+
+        Args:
+            thread_id: Thread ID
+            instructions: Optional override instructions
+            tools: Optional list of tools to use
+
+        Returns:
+            Created run data
+
+        Raises:
+            ValueError: If OpenAI assistant ID is not found
+        """
+        if not self.openai_assistant_id:
+            raise ValueError("OpenAI Assistant ID not found")
+            
         run = self.client.beta.threads.runs.create(
             thread_id=thread_id,
-            assistant_id=assistant_id,
+            assistant_id=self.openai_assistant_id,
             instructions=instructions,
-            tools=tools,
+            tools=tools or []
         )
         return run.model_dump()
 
-    async def get_messages(self, thread_id: str, limit: int = 100) -> List[Dict]:
-        """Get messages from a thread"""
-        messages = self.client.beta.threads.messages.list(
-            thread_id=thread_id, limit=limit
-        )
-        return [msg.model_dump() for msg in messages.data]
+    def get_run(self, thread_id: str, run_id: str) -> Dict[str, Any]:
+        """Get the status of a run.
 
-    async def get_run(self, thread_id: str, run_id: str) -> Dict:
-        """Get a run's status"""
-        run = self.client.beta.threads.runs.retrieve(thread_id=thread_id, run_id=run_id)
+        Args:
+            thread_id: Thread ID
+            run_id: Run ID
+
+        Returns:
+            Run status data
+        """
+        run = self.client.beta.threads.runs.retrieve(
+            thread_id=thread_id,
+            run_id=run_id
+        )
         return run.model_dump()
 
-    async def submit_tool_outputs(
-        self, thread_id: str, run_id: str, tool_outputs: List[Dict[str, str]]
-    ) -> Dict:
-        """Submit tool outputs for a run"""
+    def get_messages(self, thread_id: str) -> List[Dict[str, Any]]:
+        """Get all messages in a thread.
+
+        Args:
+            thread_id: Thread ID
+
+        Returns:
+            List of messages
+        """
+        messages = self.client.beta.threads.messages.list(thread_id=thread_id)
+        return [message.model_dump() for message in messages.data]
+
+    def submit_tool_outputs(
+        self, 
+        thread_id: str, 
+        run_id: str, 
+        tool_outputs: List[Dict[str, str]]
+    ) -> Dict[str, Any]:
+        """Submit tool outputs for a run.
+
+        Args:
+            thread_id: Thread ID
+            run_id: Run ID
+            tool_outputs: List of tool outputs
+
+        Returns:
+            Updated run data
+        """
         run = self.client.beta.threads.runs.submit_tool_outputs(
-            thread_id=thread_id, run_id=run_id, tool_outputs=tool_outputs
+            thread_id=thread_id,
+            run_id=run_id,
+            tool_outputs=tool_outputs
         )
         return run.model_dump()
 
-    async def cancel_run(self, thread_id: str, run_id: str) -> Dict:
-        """Cancel a run"""
-        run = self.client.beta.threads.runs.cancel(thread_id=thread_id, run_id=run_id)
+    def cancel_run(
+        self, 
+        thread_id: str, 
+        run_id: str
+    ) -> Dict[str, Any]:
+        """Cancel a run.
+
+        Args:
+            thread_id: Thread ID
+            run_id: Run ID
+
+        Returns:
+            Cancelled run data
+        """
+        run = self.client.beta.threads.runs.cancel(
+            thread_id=thread_id,
+            run_id=run_id
+        )
         return run.model_dump()
 
 

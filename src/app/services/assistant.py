@@ -1,3 +1,5 @@
+"""Service for managing assistants in the database."""
+
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 from uuid import UUID
@@ -6,11 +8,15 @@ import jwt
 from supabase.lib.client_options import ClientOptions
 
 from app.core.config import get_settings
+from app.core.logger import logger
 from supabase import Client, create_client
 
 
 class AssistantService:
+    """Service for managing assistants in the database."""
+
     def __init__(self):
+        """Initialize the service with Supabase client."""
         settings = get_settings()
 
         # Create service role JWT
@@ -34,11 +40,22 @@ class AssistantService:
         )
 
         self.supabase = create_client(
-            settings.SUPABASE_URL, settings.SUPABASE_SERVICE_ROLE_KEY, options=options
+            settings.SUPABASE_URL,
+            settings.SUPABASE_SERVICE_ROLE_KEY,
+            options=options
         )
 
     async def create_assistant(self, assistant_data: Dict, user_id: UUID) -> Dict:
-        print(f"Creating assistant with data: {assistant_data}")  # Debug print
+        """Create a new assistant.
+
+        Args:
+            assistant_data: Assistant data including OpenAI assistant ID
+            user_id: User ID
+
+        Returns:
+            Created assistant data
+        """
+        logger.debug(f"Creating assistant with data: {assistant_data}")
 
         # Convert assistant_data to dict if it's not already
         data = (
@@ -50,16 +67,25 @@ class AssistantService:
         # Add user_id to the data
         data["user_id"] = str(user_id)
 
-        print(f"Final data for insert: {data}")  # Debug print
+        # Keep the assistant_id as is since that's our column name
+        logger.debug(f"Final data for insert: {data}")
 
         try:
             result = self.supabase.table("lacl_assistants").insert(data).execute()
             return result.data[0] if result.data else None
         except Exception as e:
-            print(f"Error creating assistant: {str(e)}")
+            logger.error(f"Error creating assistant: {str(e)}")
             raise
 
     async def get_assistants(self, user_id: UUID) -> List[Dict]:
+        """Get all assistants for a user.
+
+        Args:
+            user_id: User ID
+
+        Returns:
+            List of assistants
+        """
         result = (
             self.supabase.table("lacl_assistants")
             .select("*")
@@ -69,6 +95,15 @@ class AssistantService:
         return result.data
 
     async def get_assistant(self, assistant_id: UUID, user_id: UUID) -> Optional[Dict]:
+        """Get a specific assistant.
+
+        Args:
+            assistant_id: Assistant ID
+            user_id: User ID
+
+        Returns:
+            Assistant data or None if not found
+        """
         result = (
             self.supabase.table("lacl_assistants")
             .select("*")
@@ -76,11 +111,25 @@ class AssistantService:
             .eq("user_id", str(user_id))
             .execute()
         )
-        return result.data[0] if result.data else None
+        
+        if not result.data:
+            return None
+            
+        return result.data[0]
 
     async def update_assistant(
         self, assistant_id: UUID, assistant_update: Dict, user_id: UUID
     ) -> Optional[Dict]:
+        """Update an assistant.
+
+        Args:
+            assistant_id: Assistant ID
+            assistant_update: Update data
+            user_id: User ID
+
+        Returns:
+            Updated assistant data or None if not found
+        """
         update_data = assistant_update.model_dump(exclude_unset=True)
         if not update_data:
             return await self.get_assistant(assistant_id, user_id)
@@ -95,6 +144,15 @@ class AssistantService:
         return result.data[0] if result.data else None
 
     async def delete_assistant(self, assistant_id: UUID, user_id: UUID) -> bool:
+        """Delete an assistant.
+
+        Args:
+            assistant_id: Assistant ID
+            user_id: User ID
+
+        Returns:
+            True if deleted, False otherwise
+        """
         result = (
             self.supabase.table("lacl_assistants")
             .delete()
@@ -105,7 +163,15 @@ class AssistantService:
         return bool(result.data)
 
     async def get_assistant_analytics(self, assistant_id: UUID, user_id: UUID) -> Dict:
-        """Get analytics for an assistant from lacl_analytics table"""
+        """Get analytics for an assistant.
+
+        Args:
+            assistant_id: Assistant ID
+            user_id: User ID
+
+        Returns:
+            Analytics data
+        """
         # Get total conversations
         conversations = (
             self.supabase.table("lacl_chat_sessions")
@@ -164,7 +230,15 @@ class AssistantService:
     async def validate_openai_credentials(
         self, assistant_id: UUID, user_id: UUID
     ) -> bool:
-        """Validate OpenAI API key"""
+        """Validate OpenAI API key.
+
+        Args:
+            assistant_id: Assistant ID
+            user_id: User ID
+
+        Returns:
+            True if valid, False otherwise
+        """
         assistant = await self.get_assistant(assistant_id, user_id)
         if not assistant or not assistant.get("api_key"):
             return False
@@ -174,7 +248,14 @@ class AssistantService:
         return True
 
     def generate_embed_code(self, assistant_id: UUID) -> Dict[str, str]:
-        """Generate embed code for the assistant widget"""
+        """Generate embed code for the assistant widget.
+
+        Args:
+            assistant_id: Assistant ID
+
+        Returns:
+            Embed code and script URL
+        """
         script_url = f"/static/assistant.js"
         code = f"""
         <div id="assistant-{assistant_id}"></div>
@@ -188,7 +269,15 @@ class AssistantService:
     async def update_embed_settings(
         self, assistant_id: UUID, embed_settings: Dict
     ) -> bool:
-        """Update embed settings for an assistant"""
+        """Update embed settings for an assistant.
+
+        Args:
+            assistant_id: Assistant ID
+            embed_settings: Embed settings data
+
+        Returns:
+            True if updated, False otherwise
+        """
         try:
             # First, check if embed settings exist
             result = (
@@ -220,10 +309,12 @@ class AssistantService:
                 data["assistant_id"] = str(assistant_id)
                 data["created_at"] = data["updated_at"]
                 result = (
-                    self.supabase.table("lacl_embed_settings").insert(data).execute()
+                    self.supabase.table("lacl_embed_settings")
+                    .insert(data)
+                    .execute()
                 )
 
             return bool(result.data)
         except Exception as e:
-            print(f"Error updating embed settings: {str(e)}")
+            logger.error(f"Error updating embed settings: {str(e)}")
             return False
