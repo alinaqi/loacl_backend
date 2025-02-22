@@ -40,6 +40,7 @@ class StreamingAPITestFlow:
         self.openai_assistant_id = assistant_id
         self.openai_key = openai_key
         self.access_token: Optional[str] = None
+        self.api_key: Optional[str] = None
         self.local_assistant_id: Optional[str] = None
         self.thread_id: Optional[str] = None
         self.headers: Dict[str, str] = {}
@@ -55,6 +56,7 @@ class StreamingAPITestFlow:
         endpoint: str,
         data: Optional[Dict[str, Any]] = None,
         params: Optional[Dict[str, Any]] = None,
+        use_api_key: bool = False,
     ) -> Dict[str, Any]:
         """Make an HTTP request to the API.
 
@@ -63,12 +65,19 @@ class StreamingAPITestFlow:
             endpoint: API endpoint
             data: Request data
             params: Query parameters
+            use_api_key: Whether to use API key instead of Bearer token
 
         Returns:
             API response as dictionary
         """
         url = urljoin(self.base_url, endpoint)
-        headers = self.headers.copy()
+        headers = {}
+
+        # Use API key if specified and available
+        if use_api_key and self.api_key:
+            headers["X-API-Key"] = self.api_key
+        else:
+            headers = self.headers.copy()
 
         if data and method != "GET":
             # Sanitize data for logging
@@ -102,6 +111,7 @@ class StreamingAPITestFlow:
         endpoint: str,
         data: Optional[Dict[str, Any]] = None,
         params: Optional[Dict[str, Any]] = None,
+        use_api_key: bool = False,
     ) -> None:
         """Make a streaming request to the API.
 
@@ -109,9 +119,17 @@ class StreamingAPITestFlow:
             endpoint: API endpoint
             data: Request data
             params: Query parameters
+            use_api_key: Whether to use API key instead of Bearer token
         """
         url = urljoin(self.base_url, endpoint)
-        headers = self.headers.copy()
+        headers = {}
+        
+        # Use API key if specified and available
+        if use_api_key and self.api_key:
+            headers["X-API-Key"] = self.api_key
+        else:
+            headers = self.headers.copy()
+            
         headers["Content-Type"] = "application/json"
         headers["Accept"] = "text/event-stream"
 
@@ -257,6 +275,19 @@ class StreamingAPITestFlow:
         print(f"Created local assistant with ID: {self.local_assistant_id}")
         return response
 
+    def create_api_key(self) -> Dict[str, Any]:
+        """Create a new API key.
+
+        Returns:
+            API key creation response
+        """
+        print("\n3. Creating API key...")
+        data = {"name": "Test API Key"}
+        response = self._make_request("POST", "/api/v1/api-keys", data)
+        self.api_key = response["key"]
+        print(f"Created API key: {self.api_key}")
+        return response
+
     async def send_streaming_message(self, message: str) -> None:
         """Send a message using streaming API.
 
@@ -286,15 +317,49 @@ class StreamingAPITestFlow:
 
         await self._stream_request(endpoint, data, params)
 
-    def delete_chat_session(self) -> None:
-        """Delete the current chat session."""
+    async def send_streaming_message_with_api_key(self, message: str) -> None:
+        """Send a message using streaming API with API key authentication.
+
+        Args:
+            message: Message content to send
+        """
+        print(f"\nSending message with API key: {message}")
+
+        # Create thread and run if needed
+        if not self.thread_id:
+            message_data = {"role": "user", "content": message, "file_ids": []}
+            data = {"messages": [message_data]}
+            print("\nCreating new thread with data:", json.dumps(data, indent=2))
+            endpoint = f"/api/v1/assistant-streaming/threads/stream"
+            params = {"assistant_id": self.local_assistant_id}
+        else:
+            data = {
+                "assistant_id": self.local_assistant_id,
+                "instructions": None,
+                "tools": [],
+            }
+            print("\nContinuing thread with data:", json.dumps(data, indent=2))
+            endpoint = (
+                f"/api/v1/assistant-streaming/threads/{self.thread_id}/runs/stream"
+            )
+            params = None
+
+        await self._stream_request(endpoint, data, params, use_api_key=True)
+
+    def delete_chat_session(self, use_api_key: bool = False) -> None:
+        """Delete the current chat session.
+        
+        Args:
+            use_api_key: Whether to use API key authentication
+        """
         if self.thread_id:
             print("\nDeleting chat session...")
             # Get the session ID from the thread ID
             session_result = self._make_request(
                 "GET",
                 "/api/v1/assistant-communication/chat-sessions/messages",
-                params={"assistant_id": self.local_assistant_id}
+                params={"assistant_id": self.local_assistant_id},
+                use_api_key=use_api_key
             )
             
             if session_result and len(session_result) > 0:
@@ -303,7 +368,8 @@ class StreamingAPITestFlow:
                     self._make_request(
                         "DELETE",
                         f"/api/v1/assistant-communication/chat-sessions/{session_id}",
-                        params={"assistant_id": self.local_assistant_id}
+                        params={"assistant_id": self.local_assistant_id},
+                        use_api_key=use_api_key
                     )
                     print("Chat session deleted successfully")
                 except Exception as e:
@@ -311,15 +377,20 @@ class StreamingAPITestFlow:
             else:
                 print("No chat session found to delete")
 
-    def delete_assistant(self) -> Dict[str, Any]:
+    def delete_assistant(self, use_api_key: bool = False) -> Dict[str, Any]:
         """Delete the test assistant.
+        
+        Args:
+            use_api_key: Whether to use API key authentication
 
         Returns:
             Deletion response
         """
         print("\n9. Deleting assistant...")
         return self._make_request(
-            "DELETE", f"/api/v1/assistants/{self.local_assistant_id}"
+            "DELETE", 
+            f"/api/v1/assistants/{self.local_assistant_id}",
+            use_api_key=use_api_key
         )
 
 
@@ -341,9 +412,9 @@ async def main() -> None:
         test_flow.login_user()
         test_flow.create_assistant()
 
-        print("\n=== Starting Streaming Conversation Test ===\n")
+        print("\n=== Starting Token-based Streaming Conversation Test ===\n")
 
-        # Test conversation with streaming responses
+        # Test conversation with streaming responses using token
         conversations: List[Dict[str, str]] = [
             {
                 "user": (
@@ -372,18 +443,35 @@ async def main() -> None:
         ]
 
         for i, conv in enumerate(conversations, 1):
-            print(f"\n=== Exchange {i} ===")
+            print(f"\n=== Token-based Exchange {i} ===")
             print(f"\nContext: {conv['context']}")
             print(f"\nUser: {conv['user']}")
 
             await test_flow.send_streaming_message(conv["user"])
             print("\n" + "=" * 50)
 
-        # Cleanup
+        # Clean up the thread and reset for API key test
+        if test_flow.thread_id:
+            test_flow.delete_chat_session(use_api_key=False)  # Use token auth for cleanup
+        test_flow.thread_id = None
+
+        # Create API key and test streaming with it
+        test_flow.create_api_key()
+        print("\n=== Starting API Key-based Streaming Conversation Test ===\n")
+
+        for i, conv in enumerate(conversations, 1):
+            print(f"\n=== API Key-based Exchange {i} ===")
+            print(f"\nContext: {conv['context']}")
+            print(f"\nUser: {conv['user']}")
+
+            await test_flow.send_streaming_message_with_api_key(conv["user"])
+            print("\n" + "=" * 50)
+
+        # Cleanup using API key auth
         print("\n=== Cleanup ===")
         if test_flow.thread_id:
-            test_flow.delete_chat_session()
-        test_flow.delete_assistant()
+            test_flow.delete_chat_session(use_api_key=True)  # Use API key auth for cleanup
+        test_flow.delete_assistant(use_api_key=True)  # Use API key auth for cleanup
         print("\nTest flow completed successfully!")
 
     except Exception as e:
