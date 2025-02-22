@@ -94,3 +94,50 @@ $$;
 -- Create indexes
 create index if not exists idx_assistants_user_id on lacl_assistants(user_id);
 create index if not exists idx_assistants_openai_id on lacl_assistants(assistant_id);
+
+-- Create API keys table
+create table if not exists lacl_api_keys (
+    id uuid default gen_random_uuid() primary key,
+    user_id uuid not null,
+    name text not null,
+    key text not null,
+    created_at timestamp with time zone default timezone('utc'::text, now()) not null,
+    is_active boolean default true,
+    constraint api_keys_user_name unique(user_id, name)
+);
+
+-- Enable RLS on API keys table
+alter table lacl_api_keys enable row level security;
+
+-- Create API keys policies
+do $$
+begin
+    -- Users can view their own API keys
+    if not policy_exists('Users can view their own API keys', 'lacl_api_keys') then
+        create policy "Users can view their own API keys" on lacl_api_keys
+            for select using (auth.uid()::uuid = user_id);
+    end if;
+
+    -- Users can create their own API keys
+    if not policy_exists('Users can create their own API keys', 'lacl_api_keys') then
+        create policy "Users can create their own API keys" on lacl_api_keys
+            for insert with check (auth.uid()::uuid = user_id);
+    end if;
+
+    -- Users can update their own API keys
+    if not policy_exists('Users can update their own API keys', 'lacl_api_keys') then
+        create policy "Users can update their own API keys" on lacl_api_keys
+            for update using (auth.uid()::uuid = user_id);
+    end if;
+
+    -- Users can delete their own API keys
+    if not policy_exists('Users can delete their own API keys', 'lacl_api_keys') then
+        create policy "Users can delete their own API keys" on lacl_api_keys
+            for delete using (auth.uid()::uuid = user_id);
+    end if;
+end;
+$$;
+
+-- Create indexes for API keys
+create index if not exists idx_api_keys_user_id on lacl_api_keys(user_id);
+create index if not exists idx_api_keys_key on lacl_api_keys(key);

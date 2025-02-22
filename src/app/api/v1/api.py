@@ -1,6 +1,7 @@
 from fastapi import APIRouter
 
 from app.api.v1.endpoints import (
+    api_keys,
     assistant_communication,
     assistant_streaming,
     assistants,
@@ -27,4 +28,9 @@ api_router.include_router(
     assistant_streaming.router,
     prefix="/assistant-streaming",
     tags=["assistant-streaming"],
+)
+api_router.include_router(
+    api_keys.router,
+    prefix="/api-keys",
+    tags=["api-keys"],
 )
