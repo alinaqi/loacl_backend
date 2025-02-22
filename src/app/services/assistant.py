@@ -26,6 +26,7 @@ class AssistantService:
                 "iss": "supabase",
                 "iat": datetime.utcnow(),
                 "exp": datetime.utcnow() + timedelta(days=1),
+                "sub": "service_role",  # Important for service role auth
             },
             settings.SUPABASE_JWT_SECRET,
             algorithm="HS256",
@@ -160,11 +161,7 @@ class AssistantService:
             raise ValueError(f"Assistant {assistant_id} not found")
 
         try:
-            # Delete related records first
-            # 1. Delete usage metrics
-            self.supabase.table("lacl_usage_metrics").delete().eq("assistant_id", str(assistant_id)).execute()
-            
-            # 2. Delete chat messages from all sessions for this assistant
+            # Delete chat messages from all sessions for this assistant
             sessions_result = (
                 self.supabase.table("lacl_chat_sessions")
                 .select("id")
@@ -173,14 +170,20 @@ class AssistantService:
             )
             if sessions_result.data:
                 session_ids = [session["id"] for session in sessions_result.data]
-                self.supabase.table("lacl_chat_messages").delete().in_("session_id", session_ids).execute()
-            
-            # 3. Delete chat sessions
-            self.supabase.table("lacl_chat_sessions").delete().eq("assistant_id", str(assistant_id)).execute()
-            
+                self.supabase.table("lacl_chat_messages").delete().in_(
+                    "session_id", session_ids
+                ).execute()
+
+            # Delete chat sessions
+            self.supabase.table("lacl_chat_sessions").delete().eq(
+                "assistant_id", str(assistant_id)
+            ).execute()
+
             # Finally delete the assistant
-            self.supabase.table("lacl_assistants").delete().eq("id", str(assistant_id)).execute()
-            
+            self.supabase.table("lacl_assistants").delete().eq(
+                "id", str(assistant_id)
+            ).execute()
+
             return True
         except Exception as e:
             logger.error(f"Error deleting assistant {assistant_id}: {str(e)}")

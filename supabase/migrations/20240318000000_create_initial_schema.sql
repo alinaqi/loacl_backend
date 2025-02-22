@@ -1,61 +1,96 @@
--- Create users table (extending Supabase's auth.users)
-create table if not exists public.users (
-    id uuid references auth.users on delete cascade not null primary key,
-    email text not null,
-    is_active boolean default true,
-    created_at timestamp with time zone default timezone('utc'::text, now()) not null,
-    updated_at timestamp with time zone,
-    constraint users_email_key unique (email)
-);
+-- Helper function for policy checks
+create or replace function policy_exists(policy_name text, table_name text)
+returns boolean as $$
+begin
+    return exists (
+        select 1 from pg_policies
+        where policyname = policy_name
+        and tablename = table_name
+    );
+end;
+$$ language plpgsql;
 
--- Enable RLS
-alter table public.users enable row level security;
-
--- Create users policies
-create policy "Users can view their own data" on public.users
-    for select using (auth.uid() = id);
-
-create policy "Users can update their own data" on public.users
-    for update using (auth.uid() = id);
+-- Drop existing foreign key if exists
+alter table if exists lacl_assistants
+    drop constraint if exists lacl_assistants_user_id_fkey;
 
 -- Create assistants table
-create table if not exists public.assistants (
+create table if not exists lacl_assistants (
     id uuid default gen_random_uuid() primary key,
-    owner_id uuid references public.users on delete cascade not null,
+    user_id uuid not null,
     name text not null,
     description text,
-    openai_assistant_id text not null,
+    assistant_id text not null,
     model text default 'gpt-4-turbo-preview',
     instructions text,
-    tools jsonb default '[]'::jsonb,
+    tools_enabled text[] default '{}',
     api_key text not null,
     is_active boolean default true,
     embed_settings jsonb default '{"theme": "light", "position": "bottom-right"}'::jsonb,
+    features jsonb default jsonb_build_object(
+        'showFileUpload', true,
+        'showVoiceInput', true,
+        'showEmoji', true,
+        'showGuidedQuestions', true,
+        'showFollowUpSuggestions', true
+    ),
+    design_settings jsonb default jsonb_build_object(
+        'theme', jsonb_build_object(
+            'primary_color', '#4F46E5',
+            'secondary_color', '#6366F1',
+            'text_color', '#111827',
+            'background_color', '#FFFFFF'
+        ),
+        'layout', jsonb_build_object(
+            'width', '380px',
+            'height', '600px',
+            'position', 'right',
+            'bubble_icon', null
+        ),
+        'typography', jsonb_build_object(
+            'font_family', 'Inter, system-ui, sans-serif',
+            'font_size', '14px'
+        )
+    ),
     created_at timestamp with time zone default timezone('utc'::text, now()) not null,
     updated_at timestamp with time zone,
-    constraint assistants_owner_openai_key unique(owner_id, openai_assistant_id)
+    metadata jsonb default '{}'::jsonb,
+    constraint assistants_user_openai_key unique(user_id, assistant_id)
 );
 
 -- Enable RLS
-alter table public.assistants enable row level security;
+alter table lacl_assistants enable row level security;
 
 -- Create assistants policies
-create policy "Users can view their own assistants" on public.assistants
-    for select using (auth.uid() = owner_id);
+do $$
+begin
+    if not policy_exists('Users can view their own assistants', 'lacl_assistants') then
+        create policy "Users can view their own assistants" on lacl_assistants
+            for select using (auth.uid() = user_id);
+    end if;
 
-create policy "Users can create their own assistants" on public.assistants
-    for insert with check (auth.uid() = owner_id);
+    if not policy_exists('Users can create their own assistants', 'lacl_assistants') then
+        create policy "Users can create their own assistants" on lacl_assistants
+            for insert with check (auth.uid() = user_id);
+    end if;
 
-create policy "Users can update their own assistants" on public.assistants
-    for update using (auth.uid() = owner_id);
+    if not policy_exists('Users can update their own assistants', 'lacl_assistants') then
+        create policy "Users can update their own assistants" on lacl_assistants
+            for update using (auth.uid() = user_id);
+    end if;
 
-create policy "Users can delete their own assistants" on public.assistants
-    for delete using (auth.uid() = owner_id);
+    if not policy_exists('Users can delete their own assistants', 'lacl_assistants') then
+        create policy "Users can delete their own assistants" on lacl_assistants
+            for delete using (auth.uid() = user_id);
+    end if;
 
--- Create public access policy for active assistants
-create policy "Public can view active assistants" on public.assistants
-    for select using (is_active = true);
+    if not policy_exists('Public can view active assistants', 'lacl_assistants') then
+        create policy "Public can view active assistants" on lacl_assistants
+            for select using (is_active = true);
+    end if;
+end;
+$$;
 
 -- Create indexes
-create index if not exists idx_assistants_owner_id on public.assistants(owner_id);
-create index if not exists idx_assistants_openai_id on public.assistants(openai_assistant_id);
+create index if not exists idx_assistants_user_id on lacl_assistants(user_id);
+create index if not exists idx_assistants_openai_id on lacl_assistants(assistant_id);

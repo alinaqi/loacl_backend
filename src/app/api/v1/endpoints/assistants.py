@@ -80,7 +80,7 @@ class AssistantResponse(BaseModel):
     features: Features
     is_active: bool
     created_at: str
-    updated_at: str
+    updated_at: Optional[str] = None
 
 
 class AssistantAnalytics(BaseModel):

@@ -4,9 +4,9 @@ This module provides functionality for managing assistant communication,
 including thread and message management, run execution, and response handling.
 """
 
+from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 from uuid import UUID
-from datetime import datetime, timedelta
 
 import jwt
 from openai import OpenAI
@@ -22,10 +22,7 @@ class AssistantCommunicationService:
     """Service for managing communication with OpenAI assistants."""
 
     def __init__(
-        self,
-        api_key: str,
-        openai_assistant_id: str,
-        client: Optional[OpenAI] = None
+        self, api_key: str, openai_assistant_id: str, client: Optional[OpenAI] = None
     ) -> None:
         """Initialize the assistant communication service.
 
@@ -37,10 +34,10 @@ class AssistantCommunicationService:
         self.api_key = api_key
         self.openai_assistant_id = openai_assistant_id
         self.client = client or OpenAI(api_key=api_key)
-        
+
         # Initialize Supabase with service role
         settings = get_settings()
-        
+
         # Create service role JWT
         service_role_jwt = jwt.encode(
             {
@@ -60,11 +57,9 @@ class AssistantCommunicationService:
                 "Authorization": f"Bearer {service_role_jwt}",
             }
         )
-        
+
         self.supabase = create_client(
-            settings.SUPABASE_URL,
-            settings.SUPABASE_SERVICE_ROLE_KEY,
-            options=options
+            settings.SUPABASE_URL, settings.SUPABASE_SERVICE_ROLE_KEY, options=options
         )
 
     @classmethod
@@ -106,10 +101,7 @@ class AssistantCommunicationService:
         )
 
     def _get_or_create_chat_session(
-        self,
-        thread_id: str,
-        assistant_id: str,
-        fingerprint: str = "default"
+        self, thread_id: str, assistant_id: str, fingerprint: str = "default"
     ) -> Dict[str, Any]:
         """Get or create a chat session for the thread.
 
@@ -128,26 +120,24 @@ class AssistantCommunicationService:
             .eq("metadata->>thread_id", thread_id)
             .execute()
         )
-        
+
         if result.data:
             return result.data[0]
-            
+
         # Create new session
         session_data = {
             "assistant_id": assistant_id,
             "fingerprint": fingerprint,
-            "metadata": {"thread_id": thread_id}
+            "metadata": {"thread_id": thread_id},
         }
-        
-        result = self.supabase.table("lacl_chat_sessions").insert(session_data).execute()
+
+        result = (
+            self.supabase.table("lacl_chat_sessions").insert(session_data).execute()
+        )
         return result.data[0]
 
     def _save_message(
-        self,
-        session_id: str,
-        role: str,
-        content: str,
-        tokens_used: int = 0
+        self, session_id: str, role: str, content: str, tokens_used: int = 0
     ) -> Dict[str, Any]:
         """Save a message to the database.
 
@@ -164,15 +154,15 @@ class AssistantCommunicationService:
             "session_id": session_id,
             "role": role,
             "content": content,
-            "tokens_used": tokens_used
+            "tokens_used": tokens_used,
         }
-        
-        result = self.supabase.table("lacl_chat_messages").insert(message_data).execute()
+
+        result = (
+            self.supabase.table("lacl_chat_messages").insert(message_data).execute()
+        )
         return result.data[0]
 
-    def create_thread(
-        self, messages: List[Dict[str, Any]]
-    ) -> Dict[str, Any]:
+    def create_thread(self, messages: List[Dict[str, Any]]) -> Dict[str, Any]:
         """Create a new thread with optional initial messages.
 
         Args:
@@ -190,7 +180,7 @@ class AssistantCommunicationService:
         content: str,
         file_ids: Optional[List[str]] = None,
         assistant_id: Optional[str] = None,
-        fingerprint: str = "default"
+        fingerprint: str = "default",
     ) -> Dict[str, Any]:
         """Add a message to an existing thread.
 
@@ -209,21 +199,19 @@ class AssistantCommunicationService:
             "role": "user",
             "content": content,
         }
-        
+
         if file_ids is not None:
             params["file_ids"] = file_ids
-            
+
         message = self.client.beta.threads.messages.create(**params)
-        
+
         # Save to database if assistant_id is provided
         if assistant_id:
-            session = self._get_or_create_chat_session(thread_id, assistant_id, fingerprint)
-            self._save_message(
-                session_id=session["id"],
-                role="user",
-                content=content
+            session = self._get_or_create_chat_session(
+                thread_id, assistant_id, fingerprint
             )
-            
+            self._save_message(session_id=session["id"], role="user", content=content)
+
         return message.model_dump()
 
     def run_assistant(
@@ -279,7 +267,7 @@ class AssistantCommunicationService:
             List of messages
         """
         messages = self.client.beta.threads.messages.list(thread_id=thread_id)
-        
+
         # For each message from OpenAI, ensure it's saved in our database
         for message in messages.data:
             msg_data = message.model_dump()
@@ -290,7 +278,7 @@ class AssistantCommunicationService:
                 .eq("metadata->>thread_id", thread_id)
                 .execute()
             )
-            
+
             if session_result.data:
                 session = session_result.data[0]
                 # Check if message exists
@@ -301,17 +289,21 @@ class AssistantCommunicationService:
                     .eq("metadata->>message_id", msg_data["id"])
                     .execute()
                 )
-                
+
                 if not msg_result.data:
                     # Save message if it doesn't exist
-                    content = msg_data["content"][0]["text"]["value"] if msg_data["content"] else ""
+                    content = (
+                        msg_data["content"][0]["text"]["value"]
+                        if msg_data["content"]
+                        else ""
+                    )
                     self._save_message(
                         session_id=session["id"],
                         role=msg_data["role"],
                         content=content,
-                        tokens_used=0  # We could calculate this if needed
+                        tokens_used=0,  # We could calculate this if needed
                     )
-        
+
         return [message.model_dump() for message in messages.data]
 
     def submit_tool_outputs(
@@ -346,11 +338,7 @@ class AssistantCommunicationService:
         return run.model_dump()
 
     def get_session_messages(
-        self,
-        session_id: str,
-        fingerprint: str,
-        limit: int = 50,
-        offset: int = 0
+        self, session_id: str, fingerprint: str, limit: int = 50, offset: int = 0
     ) -> List[Dict[str, Any]]:
         """Get messages from a specific chat session.
 
@@ -371,10 +359,10 @@ class AssistantCommunicationService:
             .eq("fingerprint", fingerprint)
             .execute()
         )
-        
+
         if not session.data:
             raise ValueError(f"Chat session {session_id} not found")
-            
+
         # Get messages
         result = (
             self.supabase.table("lacl_chat_messages")
@@ -384,7 +372,7 @@ class AssistantCommunicationService:
             .range(offset, offset + limit - 1)
             .execute()
         )
-        
+
         return result.data
 
     def get_messages_from_sessions(
@@ -392,7 +380,7 @@ class AssistantCommunicationService:
         fingerprint: str,
         session_ids: Optional[List[str]] = None,
         limit: int = 50,
-        offset: int = 0
+        offset: int = 0,
     ) -> List[Dict[str, Any]]:
         """Get messages from multiple chat sessions.
 
@@ -411,18 +399,18 @@ class AssistantCommunicationService:
             .select("id")
             .eq("fingerprint", fingerprint)
         )
-        
+
         if session_ids:
             sessions_query = sessions_query.in_("id", session_ids)
-            
+
         sessions = sessions_query.execute()
-        
+
         if not sessions.data:
             return []
-            
+
         # Get all session IDs
         session_ids = [session["id"] for session in sessions.data]
-        
+
         # Now get messages for these sessions
         result = (
             self.supabase.table("lacl_chat_messages")
@@ -432,7 +420,7 @@ class AssistantCommunicationService:
             .range(offset, offset + limit - 1)
             .execute()
         )
-        
+
         return result.data
 
     async def delete_chat_session(
@@ -460,20 +448,21 @@ class AssistantCommunicationService:
             .eq("fingerprint", fingerprint)
             .execute()
         )
-        
+
         if not session.data:
             raise ValueError(f"Chat session {session_id} not found")
-            
+
         try:
-            # Delete usage metrics first
-            self.supabase.table("lacl_usage_metrics").delete().eq("session_id", session_id).execute()
-            
             # Delete all messages
-            self.supabase.table("lacl_chat_messages").delete().eq("session_id", session_id).execute()
-            
+            self.supabase.table("lacl_chat_messages").delete().eq(
+                "session_id", session_id
+            ).execute()
+
             # Then delete the session
-            self.supabase.table("lacl_chat_sessions").delete().eq("id", session_id).execute()
-            
+            self.supabase.table("lacl_chat_sessions").delete().eq(
+                "id", session_id
+            ).execute()
+
             # Delete the OpenAI thread if it exists
             if session.data[0].get("metadata", {}).get("thread_id"):
                 thread_id = session.data[0]["metadata"]["thread_id"]
@@ -483,7 +472,7 @@ class AssistantCommunicationService:
                     logger.error(f"Error deleting OpenAI thread {thread_id}: {str(e)}")
                     # Continue even if OpenAI thread deletion fails
                     pass
-            
+
             return True
         except Exception as e:
             logger.error(f"Error deleting chat session {session_id}: {str(e)}")
