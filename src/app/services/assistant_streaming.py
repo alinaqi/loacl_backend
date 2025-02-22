@@ -205,13 +205,18 @@ class AssistantStreamingService:
 
             # Create thread
             thread = self.client.beta.threads.create(messages=formatted_messages)
-            thread_data = thread.model_dump()
+            thread_data = {
+                "id": thread.id,
+                "object": "thread",
+                "created_at": thread.created_at,
+                "metadata": thread.metadata
+            }
             yield self._create_sse_event("thread.created", thread_data)
 
             # Save to database if assistant_id is provided
             if assistant_id:
                 session = self._get_or_create_chat_session(
-                    thread_id=thread_data["id"],
+                    thread_id=thread.id,  # Use thread.id directly
                     assistant_id=assistant_id,
                     fingerprint=fingerprint
                 )
@@ -292,25 +297,26 @@ class AssistantStreamingService:
                         thread_id=thread_id, run_id=active_run.id
                     )
 
-            # Create new run with streaming enabled
+            # Create new run without streaming first to get the run ID
             run = self.client.beta.threads.runs.create(
                 thread_id=thread_id,
                 assistant_id=self.openai_assistant_id,
                 instructions=instructions,
                 tools=tools or [],
-                stream=True,
             )
-            yield self._create_sse_event("thread.run.created", run.model_dump())
+            
+            run_data = run.model_dump()
+            yield self._create_sse_event("thread.run.created", run_data)
 
-            # Stream run status
+            # Now stream the run status
             while True:
                 run_status = self.client.beta.threads.runs.retrieve(
                     thread_id=thread_id, run_id=run.id
                 )
-
-                # Emit run status events
+                
+                status_data = run_status.model_dump()
                 yield self._create_sse_event(
-                    f"thread.run.{run_status.status}", run_status.model_dump()
+                    f"thread.run.{run_status.status}", status_data
                 )
 
                 if run_status.status in ["completed", "failed", "cancelled", "expired"]:
@@ -330,22 +336,23 @@ class AssistantStreamingService:
 
                     if message.content:
                         for content_part in message.content:
+                            content_data = content_part.model_dump()
                             yield self._create_sse_event(
                                 "thread.message.delta",
                                 {
                                     "id": message.id,
                                     "object": "thread.message.delta",
-                                    "delta": {"content": [content_part.model_dump()]},
+                                    "delta": {"content": [content_data]},
                                 },
                             )
 
                             # Save message to database if we have session
-                            if session and content_part.get("type") == "text":
+                            if session and content_part.type == "text":
                                 self._save_message(
                                     session_id=session["id"],
-                                    role=message_data["role"],
-                                    content=content_part["text"]["value"],
-                                    metadata={"message_id": message_data["id"]}
+                                    role=message.role,
+                                    content=content_part.text.value,
+                                    metadata={"message_id": message.id}
                                 )
 
                     yield self._create_sse_event(
