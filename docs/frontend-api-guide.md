@@ -9,7 +9,14 @@ http://localhost:8000/api/v1
 
 ## Authentication
 
-### Register User
+There are two ways to authenticate with the API:
+
+1. Using Bearer Token (for frontend applications)
+2. Using API Key (for external integrations)
+
+### Bearer Token Authentication
+
+#### Register User
 ```http
 POST /auth/register
 Content-Type: application/json
@@ -28,7 +35,7 @@ Response: {
 }
 ```
 
-### Login
+#### Login
 ```http
 POST /auth/login/access-token
 Content-Type: application/x-www-form-urlencoded
@@ -43,9 +50,92 @@ Response: {
 }
 ```
 
-All subsequent requests should include the access token in the Authorization header:
+Use the Bearer token in the Authorization header:
 ```
 Authorization: Bearer eyJ...
+```
+
+### API Key Authentication
+
+For external integrations, you can use an API key instead of Bearer token authentication. Add your API key to the `X-API-Key` header:
+
+```
+X-API-Key: loacl_your_api_key
+```
+
+Example using curl:
+```bash
+curl "http://localhost:8000/api/v1/api-keys" \
+  -H "X-API-Key: loacl_your_api_key"
+```
+
+## API Keys
+
+### Create API Key
+```http
+POST /api-keys
+Content-Type: application/json
+
+{
+  "name": "My API Key"
+}
+
+Response: {
+  "id": "uuid",
+  "name": "My API Key",
+  "key": "loacl_...",
+  "created_at": "2024-02-22T12:00:00Z"
+}
+```
+
+### List API Keys
+```http
+GET /api-keys
+
+Response: [
+  {
+    "id": "uuid",
+    "name": "My API Key",
+    "key": "loacl_...",
+    "created_at": "2024-02-22T12:00:00Z"
+  }
+]
+```
+
+### Get API Key
+```http
+GET /api-keys/{api_key_id}
+
+Response: {
+  "id": "uuid",
+  "name": "My API Key",
+  "key": "loacl_...",
+  "created_at": "2024-02-22T12:00:00Z"
+}
+```
+
+### Update API Key
+```http
+PATCH /api-keys/{api_key_id}
+Content-Type: application/json
+
+{
+  "name": "Updated API Key Name"
+}
+
+Response: {
+  "id": "uuid",
+  "name": "Updated API Key Name",
+  "key": "loacl_...",
+  "created_at": "2024-02-22T12:00:00Z"
+}
+```
+
+### Delete API Key
+```http
+DELETE /api-keys/{api_key_id}
+
+Response: 204 No Content
 ```
 
 ## Assistants
@@ -62,7 +152,33 @@ Content-Type: application/json
   "model": "gpt-4-turbo-preview",
   "api_key": "sk-...",
   "assistant_id": "asst_...",
-  "tools_enabled": ["code_interpreter"]
+  "tools_enabled": ["code_interpreter"],
+  "design_settings": {
+    "theme": {
+      "primary_color": "#4F46E5",
+      "secondary_color": "#6366F1",
+      "text_color": "#111827",
+      "background_color": "#FFFFFF"
+    },
+    "layout": {
+      "width": "380px",
+      "height": "600px",
+      "position": "right",
+      "bubble_icon": null
+    },
+    "typography": {
+      "font_family": "Inter, system-ui, sans-serif",
+      "font_size": "14px"
+    }
+  },
+  "features": {
+    "showFileUpload": true,
+    "showVoiceInput": true,
+    "showEmoji": true,
+    "showGuidedQuestions": true,
+    "showFollowUpSuggestions": true
+  },
+  "is_active": true
 }
 
 Response: {
@@ -73,46 +189,52 @@ Response: {
 }
 ```
 
-### Update Assistant Settings
+### List Assistants
 ```http
-PUT /assistants/{assistant_id}
-Content-Type: application/json
+GET /assistants
 
-{
-  "theme": {
-    "primary_color": "#FF0000",
-    "secondary_color": "#00FF00",
-    "text_color": "#0000FF",
-    "background_color": "#FFFFFF"
-  },
-  "chat_bubble_text": "Chat with me!",
-  "initial_message": "Hello! How can I help you today!"
-}
-
-Response: {
-  "id": "uuid",
-  "theme": {...},
-  ...
-}
+Response: [
+  {
+    "id": "uuid",
+    "name": "Test Assistant",
+    "description": "A helpful assistant",
+    ...
+  }
+]
 ```
 
-### Get Widget Code
-```http
-GET /assistants/{assistant_id}/embed
-
-Response: {
-  "code": "<script>...</script>"
-}
-```
-
-### Get Widget Settings
+### Get Assistant
 ```http
 GET /assistants/{assistant_id}
 
 Response: {
   "id": "uuid",
   "name": "Test Assistant",
-  "theme": {...},
+  "description": "A helpful assistant",
+  ...
+}
+```
+
+### Update Assistant
+```http
+PUT /assistants/{assistant_id}
+Content-Type: application/json
+
+{
+  "name": "Updated Assistant",
+  "description": "Updated description",
+  "instructions": "Updated instructions",
+  "model": "gpt-4-turbo-preview",
+  "api_key": "sk-...",
+  "tools_enabled": ["code_interpreter"],
+  "design_settings": {...},
+  "features": {...},
+  "is_active": true
+}
+
+Response: {
+  "id": "uuid",
+  "name": "Updated Assistant",
   ...
 }
 ```
@@ -121,12 +243,62 @@ Response: {
 ```http
 DELETE /assistants/{assistant_id}
 
+Response: 204 No Content
+```
+
+### Get Assistant Analytics
+```http
+GET /assistants/{assistant_id}/analytics
+
 Response: {
-  "success": true
+  "total_conversations": 100,
+  "total_messages": 500,
+  "average_response_time": 2.5,
+  "user_satisfaction_rate": 4.8,
+  "most_common_topics": ["topic1", "topic2"]
 }
 ```
 
-## Chat Communication
+### Validate Assistant Credentials
+```http
+POST /assistants/{assistant_id}/validate
+
+Response: {
+  "is_valid": true
+}
+```
+
+### Get Embed Code
+```http
+GET /assistants/{assistant_id}/embed
+
+Response: {
+  "code": "<script>...</script>"
+}
+```
+
+### Update Embed Settings
+```http
+PUT /assistants/{assistant_id}/embed
+Content-Type: application/json
+
+{
+  "allowed_domains": ["example.com"],
+  "custom_styles": "/* CSS */",
+  "custom_script": "// JS",
+  "position": "right",
+  "auto_open": false,
+  "delay_open": 3000
+}
+
+Response: {
+  "id": "uuid",
+  "name": "Assistant Name",
+  ...
+}
+```
+
+## Assistant Communication
 
 ### Create Thread
 ```http
@@ -137,7 +309,7 @@ Content-Type: application/json
   "messages": [
     {
       "content": "Hello!",
-      "file_ids": []  // Optional
+      "file_ids": []
     }
   ]
 }
@@ -157,7 +329,7 @@ Content-Type: application/json
 
 {
   "content": "What is FastAPI?",
-  "file_ids": []  // Optional
+  "file_ids": []
 }
 
 Response: {
@@ -169,6 +341,21 @@ Response: {
 }
 ```
 
+### List Thread Messages
+```http
+GET /assistant-communication/threads/{thread_id}/messages?assistant_id={assistant_id}
+
+Response: [
+  {
+    "id": "msg_...",
+    "thread_id": "thread_...",
+    "role": "user",
+    "content": [...],
+    "created_at": 1234567890
+  }
+]
+```
+
 ### Create Run
 ```http
 POST /assistant-communication/threads/{thread_id}/runs
@@ -177,7 +364,7 @@ Content-Type: application/json
 {
   "assistant_id": "uuid",
   "instructions": "Optional override instructions",
-  "tools": []  // Optional
+  "tools": []
 }
 
 Response: {
@@ -200,19 +387,25 @@ Response: {
 }
 ```
 
-### Get Thread Messages
+### Submit Tool Outputs
 ```http
-GET /assistant-communication/threads/{thread_id}/messages?assistant_id={assistant_id}
+POST /assistant-communication/threads/{thread_id}/runs/{run_id}/submit?assistant_id={assistant_id}
+Content-Type: application/json
 
-Response: [
-  {
-    "id": "msg_...",
-    "thread_id": "thread_...",
-    "role": "user",
-    "content": [...],
-    "created_at": 1234567890
-  }
-]
+{
+  "tool_outputs": [
+    {
+      "tool_call_id": "call_...",
+      "output": "Tool output"
+    }
+  ]
+}
+
+Response: {
+  "id": "run_...",
+  "status": "completed",
+  ...
+}
 ```
 
 ### Cancel Run
@@ -226,9 +419,7 @@ Response: {
 }
 ```
 
-## Chat Sessions and Messages
-
-### Get Session Messages
+### Get Chat Session Messages
 ```http
 GET /assistant-communication/chat-sessions/{session_id}/messages?assistant_id={assistant_id}&limit=50&offset=0
 
@@ -260,6 +451,13 @@ Response: [
     "metadata": {}
   }
 ]
+```
+
+### Delete Chat Session
+```http
+DELETE /assistant-communication/chat-sessions/{session_id}?assistant_id={assistant_id}
+
+Response: 204 No Content
 ```
 
 ## Error Handling

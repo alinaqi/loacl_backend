@@ -4,6 +4,7 @@
 This script performs end-to-end testing of the LOACL API Key management, including:
 - User registration and authentication
 - API key creation and management
+- API key validation and usage
 """
 
 import argparse
@@ -32,10 +33,11 @@ class APIKeyTestFlow:
         self.access_token: Optional[str] = None
         self.headers: Dict[str, str] = {}
         self.api_key_id: Optional[str] = None
+        self.api_key: Optional[str] = None
 
         # Generate a random ID for the test user
         self.random_id = random.randint(1000, 9999)
-        self.test_email = f"test.user+{self.random_id}@example.com"
+        self.test_email = f"ashaheen+test+{self.random_id}@workhub.ai"
         self.test_password = "testpass123"
 
     def _make_request(
@@ -44,6 +46,7 @@ class APIKeyTestFlow:
         endpoint: str,
         data: Optional[Dict[str, Any]] = None,
         params: Optional[Dict[str, Any]] = None,
+        use_api_key: bool = False,
     ) -> Dict[str, Any]:
         """Make an HTTP request to the API.
 
@@ -52,12 +55,19 @@ class APIKeyTestFlow:
             endpoint: API endpoint
             data: Request data
             params: Query parameters
+            use_api_key: Whether to use API key instead of Bearer token
 
         Returns:
             API response as dictionary
         """
         url = urljoin(self.base_url, endpoint)
-        headers = self.headers.copy()
+        headers = {}
+
+        # Use API key if specified and available
+        if use_api_key and self.api_key:
+            headers["X-API-Key"] = self.api_key
+        else:
+            headers = self.headers.copy()
 
         if data and method != "GET":
             # Sanitize data for logging
@@ -96,6 +106,7 @@ class APIKeyTestFlow:
         data = {
             "email": self.test_email,
             "password": self.test_password,
+            "password_confirm": self.test_password,
             "full_name": "Test User",
         }
         return self._make_request("POST", "/api/v1/auth/register", data)
@@ -134,6 +145,7 @@ class APIKeyTestFlow:
         data = {"name": "Test API Key"}
         response = self._make_request("POST", "/api/v1/api-keys", data)
         self.api_key_id = response["id"]
+        self.api_key = response["key"]
         print(f"Created API key with ID: {self.api_key_id}")
         return response
 
@@ -159,6 +171,36 @@ class APIKeyTestFlow:
         """Delete the created API key."""
         print("\n6. Deleting API key...")
         self._make_request("DELETE", f"/api/v1/api-keys/{self.api_key_id}")
+
+    def test_api_key_auth(self) -> None:
+        """Test API key authentication."""
+        print("\n7. Testing API key authentication...")
+        
+        # Test accessing user profile with API key
+        print("Testing /api/v1/auth/me with API key...")
+        user_profile = self._make_request("GET", "/api/v1/auth/me", use_api_key=True)
+        print("✓ Successfully accessed user profile with API key")
+        
+        # Test accessing API keys list with API key
+        print("Testing /api/v1/api-keys with API key...")
+        api_keys = self._make_request("GET", "/api/v1/api-keys", use_api_key=True)
+        print("✓ Successfully listed API keys with API key")
+
+        # Test with invalid API key
+        print("Testing with invalid API key...")
+        original_api_key = self.api_key
+        self.api_key = "invalid_key"
+        try:
+            self._make_request("GET", "/api/v1/auth/me", use_api_key=True)
+            print("ERROR: Request with invalid API key succeeded!")
+            sys.exit(1)
+        except requests.exceptions.HTTPError as e:
+            if e.response.status_code == 401:
+                print("✓ Invalid API key correctly rejected")
+            else:
+                raise
+        finally:
+            self.api_key = original_api_key
 
 
 def main() -> None:
@@ -192,6 +234,9 @@ def main() -> None:
         key_details = test_flow.get_api_key()
         print("\nAPI Key Details:")
         print(json.dumps(key_details, indent=2))
+
+        # Test API key authentication
+        test_flow.test_api_key_auth()
 
         # Delete key
         test_flow.delete_api_key()

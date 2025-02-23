@@ -112,6 +112,7 @@ src/
 - Write tests for all endpoints
 - Use separate test database
 - Test both success and failure cases
+- Always use test user name as ashaheen+test+<id>@workhub.ai
 - Example test structure:
   ```python
   class TestFlow:
